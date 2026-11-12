@@ -111,6 +111,8 @@ pub struct Startup {
     pub minimized: bool,
     pub screenshots: Option<crate::shots::Shots>,
     pub warnings: Vec<String>,
+    /// No config.json yet: offer ProxyForge's configuration.
+    pub first_run: bool,
 }
 
 impl App {
@@ -176,6 +178,18 @@ impl App {
             let interval = app.config.settings.health_check_interval_minutes;
             if interval > 0 {
                 app.next_check = Some(Instant::now() + Duration::from_secs(5));
+            }
+            if app.config.settings.start_with_windows {
+                // keep the scheduled task pointing at this exe (it may have moved)
+                app.job(None, |b| {
+                    b.sync_autostart(true);
+                    Ok(())
+                });
+            }
+            if s.first_run {
+                if let Some(path) = ConfigStore::proxyforge_config_path().filter(|p| p.exists()) {
+                    app.import_proxyforge(&path);
+                }
             }
             if app.config.settings.start_enabled && app.backend.can_redirect() {
                 app.start_engine();

@@ -4,7 +4,9 @@ use std::sync::mpsc::{channel, Receiver};
 use std::time::Duration;
 
 use eframe::egui::{self, Align2, Color32, Pos2, Sense, Stroke, StrokeKind, Vec2};
-use proxidize_core::config::{Config, ConfigStore, ProxyChain, ProxyServer, ProxyType, Rule, RuleAction, TransportFilter};
+use proxidize_core::config::{
+    Config, ConfigStore, ProxyChain, ProxyServer, ProxyType, Rule, RuleAction, Settings, TransportFilter,
+};
 use proxidize_core::matching::split_list;
 use proxidize_core::proxycap::{self, ImportResult};
 
@@ -63,6 +65,8 @@ pub enum Dialog {
         result: Box<ImportResult>,
         replace: bool,
         remote_dns: bool,
+        /// ProxyForge's settings, and whether to take them.
+        settings: Option<(Box<Settings>, bool)>,
     },
 }
 
@@ -640,7 +644,7 @@ impl App {
                 }
                 o
             }
-            Dialog::ImportPreview { source, result, replace, remote_dns } => {
+            Dialog::ImportPreview { source, result, replace, remote_dns, settings } => {
                 let mut apply = false;
                 let o = sheet(ctx, "import", "Import", 620.0, |ui| {
                     ui.label(egui::RichText::new(format!("{source}: {}", result.summary())).color(TEXT));
@@ -696,7 +700,8 @@ impl App {
                 });
                 if apply {
                     let taken = std::mem::take(result.as_mut());
-                    self.apply_import(taken, *replace, *remote_dns);
+                    let new_settings = settings.as_ref().filter(|(_, take)| *take).map(|(s, _)| (**s).clone());
+                    self.apply_import(taken, *replace, *remote_dns && new_settings.is_none(), new_settings);
                 }
                 o
             }
@@ -747,37 +752,45 @@ impl App {
                     result: Box::new(result),
                     replace: self.config.rules.is_empty(),
                     remote_dns,
+                    settings: None,
                 });
             }
             Err(e) => self.message = Some((e.0, true)),
         }
     }
 
-    /// ProxyForge's config.json: same format, passwords included (same DPAPI entropy).
+    /// ProxyForge's config.json: same format, passwords included (same DPAPI entropy). Read only: ProxyForge's
+    /// file is never written.
     pub fn import_proxyforge(&mut self, path: &std::path::Path) {
-        let mut store = ConfigStore::new(path);
-        match std::fs::metadata(path).map_err(|e| e.to_string()).and_then(|_| store.load().map_err(|e| e.to_string())) {
+        let mut warnings = Vec::new();
+        let parsed = std::fs::read_to_string(path)
+            .map_err(|e| e.to_string())
+            .and_then(|json| proxidize_core::config::deserialize_from_disk(&json, &mut warnings).map_err(|e| e.to_string()));
+        match parsed {
             Ok(config) => {
+                let settings = Some((Box::new(config.settings.clone()), true));
                 let result = ImportResult {
                     proxies: config.proxies,
                     chains: config.chains,
                     rules: config.rules,
                     uses_remote_dns: config.settings.dns_mode == proxidize_core::config::DnsMode::FakeIp,
                     remote_dns_exceptions: Vec::new(),
-                    warnings: store.load_warnings,
+                    warnings,
                 };
+                let remote_dns = result.uses_remote_dns;
                 self.dialog = Some(Dialog::ImportPreview {
                     source: "ProxyForge".into(),
                     result: Box::new(result),
                     replace: true,
-                    remote_dns: true,
+                    remote_dns,
+                    settings,
                 });
             }
             Err(e) => self.message = Some((format!("Couldn't read ProxyForge's configuration: {e}"), true)),
         }
     }
 
-    fn apply_import(&mut self, result: ImportResult, replace: bool, remote_dns: bool) {
+    fn apply_import(&mut self, result: ImportResult, replace: bool, remote_dns: bool, settings: Option<Settings>) {
         let backup = ConfigStore::data_directory()
             .join(format!("config-before-import-{}.json", chrono::Local::now().format("%Y%m%d-%H%M%S")));
         if let Ok(json) = proxidize_core::config::serialize_for_disk(&self.config) {
@@ -786,6 +799,9 @@ impl App {
         let mut c = self.config.clone();
         let summary = result.summary();
         proxycap::apply(&mut c, result, replace, remote_dns);
+        if let Some(s) = settings {
+            c.settings = s;
+        }
         self.commit(c);
         self.log.info(format!("Imported {summary}."));
         self.message = Some((format!("Imported {summary}. The previous configuration is in {}.", backup.display()), false));
