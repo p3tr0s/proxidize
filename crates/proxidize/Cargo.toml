@@ -14,7 +14,7 @@ tokio.workspace = true
 chrono.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-eframe = { version = "0.37", default-features = false, features = ["accesskit"] }
+eframe = { version = "0.37", default-features = false, features = ["accesskit", "clipboard", "links"] }
 tray-icon = "0.26"
 windows-sys.workspace = true
 
