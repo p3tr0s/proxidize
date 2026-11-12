@@ -47,12 +47,12 @@ pub fn scenario() -> (Config, HashMap<String, ProxyHealth>) {
         route("Chrome", "chrome.exe", &ch, true),
         route("Discord", "Discord.exe", &it, true),
         route("Telegram", "Telegram.exe", &be, true),
-        route("qBittorrent", r"C:\Program Files\qBittorrent\qbittorrent.exe", &se, true),
+        route("WhatsApp", "WhatsApp.exe", &se, true),
         route("Spotify", "Spotify.exe", &es, true),
-        route("Thunderbird", "thunderbird.exe", &uk, true),
+        route("Outlook", "olk.exe", &uk, true),
         route("Steam", r"C:\Program Files (x86)\Steam\steam.exe", &de, false),
-        route("Slack", "slack.exe", &at, true),
-        route("Remote desktop", "mstsc.exe", &home, true),
+        route("Teams", "ms-teams.exe", &at, true),
+        route("Edge", r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe", &home, true),
         Rule {
             name: "Telemetry".into(),
             action: RuleAction::Block,
@@ -142,16 +142,16 @@ pub fn seed(tracker: &ConnectionTracker, log: &LogHub) {
     conn("chrome.exe", 11420, "mail.example.com:443", "Zurich", "Chrome", 204_880, 3_817_002, true, None);
     conn("Discord.exe", 12088, "gateway.discord.gg:443", "Milan", "Discord", 98_130, 1_302_551, true, None);
     conn("Telegram.exe", 9312, "api.telegram.org:443", "Brussels", "Telegram", 22_004, 410_440, true, None);
-    conn("qbittorrent.exe", 6644, "tracker.example.org:6969", "Stockholm", "qBittorrent", 1_712_880, 46_550_301, true, None);
+    conn("WhatsApp.exe", 6644, "web.whatsapp.com:443", "Stockholm", "WhatsApp", 171_880, 4_550_301, true, None);
     conn("Spotify.exe", 14212, "audio-ak.spotify.example:443", "Madrid", "Spotify", 30_045, 27_011_920, true, None);
-    conn("slack.exe", 13740, "wss-primary.slack.com:443", "Vienna", "Slack", 40_300, 908_112, true, None);
-    conn("mstsc.exe", 5120, "desktop.home.example:3389", "Home lab", "Remote desktop", 2_440_118, 15_330_276, true, None);
+    conn("ms-teams.exe", 13740, "teams.microsoft.com:443", "Vienna", "Teams", 940_300, 12_908_112, true, None);
+    conn("msedge.exe", 5120, "www.youtube.com:443", "Home lab", "Edge", 2_440_118, 85_330_276, true, None);
     conn(
-        "thunderbird.exe",
+        "olk.exe",
         9930,
-        "imap.example.com:993",
+        "outlook.office.com:443",
         "London",
-        "Thunderbird",
+        "Outlook",
         0,
         0,
         false,
