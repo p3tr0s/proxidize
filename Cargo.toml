@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/proxidize-core", "crates/proxidize-win", "crates/proxidize"]
 
 [workspace.package]
-version = "0.1.0-dev"
+version = "0.1.0"
 edition = "2021"
 license = "MIT"
 authors = ["Petros Aposporis"]
