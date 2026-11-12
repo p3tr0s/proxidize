@@ -1,11 +1,7 @@
-# Plan: ProxyForge in Rust
+# Plan
 
-Proxidize is the Rust rewrite of [ProxyForge](https://github.com/p3tr0s/proxyforge) (C#/.NET 10). The goal is the
-same app as **one `proxidize.exe`**: no runtime to install, no DLLs or driver files next to it. WinDivert's DLL and
-signed driver are embedded and extracted on first run.
-
-ProxyForge stays the reference until every box below is ticked; its self-tests were ported alongside the code
-(the reference vectors for checksums, the sanitized `machine.prs` fixture, the proxy and relay end-to-end tests).
+Proxidize ships as **one `proxidize.exe`**: no runtime to install, no DLLs or driver files next to it. WinDivert's
+DLL and signed driver are embedded and extracted on first run.
 
 ## Layout
 
@@ -15,13 +11,13 @@ ProxyForge stays the reference until every box below is ticked; its self-tests w
 | `proxidize-win` | WinDivert (embedded), TCP/UDP redirectors, DNS interception, process lookup, WFP kill switch, DPAPI, autostart, engine | Windows |
 | `proxidize` | The egui app and the tray | Windows |
 
-## Parity checklist
+## Checklist
 
 ### Core (`proxidize-core`) — done
 
 - [x] Addresses, CIDRs, ranges, targets with IDN normalisation
 - [x] Wildcards, `.domain` host patterns, port ranges, fake-IP domain scope
-- [x] Config: ProxyForge's JSON format as is (PascalCase, enums as strings), example config, atomic save, password protection hook, plain-password migration
+- [x] Config: JSON (PascalCase, enums as strings), example config, atomic save, password protection hook, plain-password migration
 - [x] Rule engine: programs (name/path globs), destinations (hosts, IPs, CIDRs, ranges), ports, transport; first match wins; invalid routes block; kill-switch program set
 - [x] Packets: IPv4/IPv6 + TCP/UDP parse and rewrite, checksums (C# reference vectors), IPv6 extension headers, UDP build, RST for SYN and for established segments
 - [x] IP fragment reassembly (IPv4 and IPv6), overlap/oversize/expiry handling, bounded
@@ -44,17 +40,17 @@ a SOCKS5 server, block/RST, strict-mode drops, pre-existing flows reset, fake-IP
 - [x] UDP redirector: SOCKS5 UDP ASSOCIATE per route, fragments reassembled, UDP blocked when the route can't carry it, health-check guard
 - [x] DNS: fake-IP interception, sniffing for host-name rules, own resolver port excluded
 - [x] WFP kill switch: persistent per-app block filters + dynamic-session permit while running, learned paths, `--remove-killswitch` helper
-- [x] DPAPI password protection (same entropy as ProxyForge, so its config imports with passwords)
+- [x] DPAPI password protection
 - [x] Start with Windows (Task Scheduler, elevated), firewall rule for the relay, DNS cache flush, adapter DNS servers
 - [x] Engine: start/stop, live config apply, kill-switch learning, maintenance sweeps, route guard
 - [x] Health checks on a schedule, notifications (with the app)
-- [x] First run on real Windows (0.1.0: redirection works once ProxyForge's leftover kill switch is removed)
+- [x] First run on real Windows (0.1.0)
 
 ### App (`proxidize`) — done
 
-- [x] egui window in the ProxyForge patch-panel design: Overview switchboard, Rules, Proxies, Chains, Connections, Log, Settings
+- [x] egui window in the patch-panel design: Overview switchboard, Rules, Proxies, Chains, Connections, Log, Settings
 - [x] Editors for proxies (with cable colour and a test), chains, rules (with a running-program picker), credentials for many proxies
-- [x] ProxyCap import preview (merge / replace, backup of the current config), ProxyForge import (passwords included)
+- [x] ProxyCap import preview (merge / replace, backup of the current config)
 - [x] Scheduled proxy checks with retry, leak blocking and notifications (tray balloons)
 - [x] Tray icon as a link light, close to tray, start minimised, single instance
 - [x] Admin manifest, icon, version info embedded in the exe

@@ -3,8 +3,8 @@
 Per-program proxy redirection for Windows, in one exe. Pick a program, pick a SOCKS5 / SOCKS4 / HTTP proxy or a
 chain, and its traffic goes through it, whether or not the program supports proxies.
 
-This is the Rust rewrite of [ProxyForge](https://github.com/p3tr0s/proxyforge): same rules, same config file, same
-leak protection, shipped as a single `proxidize.exe` (WinDivert's driver is embedded and unpacked on first start).
+It ships as a single `proxidize.exe`: no runtime to install, and WinDivert's driver is embedded and unpacked on first
+start.
 
 ![Proxidize overview: each program plugged into its proxy, with the exit IP and country](docs/overview.png)
 
@@ -22,7 +22,7 @@ test suite), and 0.1 is running on Windows. Expect rough edges; see [PLAN.md](PL
   offline whenever Proxidize isn't redirecting (stopped, crashed, not started yet after a reboot)
 - **Proxy check:** exit IP and country through every proxy, on a schedule; a proxy whose exit IP is your own is
   blocked until it's fixed; tray notifications on changes
-- **ProxyCap import** (binary `machine.prs` and XML) and **ProxyForge import** (config with passwords)
+- **ProxyCap import** (binary `machine.prs` and XML)
 - Start with Windows (elevated, no prompt), passwords encrypted with DPAPI, tray icon as a link light
 - **Updates:** checks this repository's releases, and installs a new version with one click after checking its SHA-256
 
@@ -39,12 +39,11 @@ under **Proxies**, a rule under **Rules**, press **Start**. Closing the window k
 | `--screenshots <folder>` | render every page with the sample data to PNGs |
 | `--after-update <pid>`, `--start` | used by the updater: wait for the old instance, then start redirecting if it was |
 
-Config: `%ProgramData%\Proxidize\config.json` (ProxyForge's format). Logs: `%ProgramData%\Proxidize\logs`.
+Config: `%ProgramData%\Proxidize\config.json`. Logs: `%ProgramData%\Proxidize\logs`.
 
-**Coming from ProxyForge or ProxyCap:** exit them first (ProxyCap runs as a service). ProxyForge's kill switch stays in
-Windows after it closes and keeps its programs offline, Proxidize or not: remove it with
-`ProxyForge.exe --remove-killswitch` (as Administrator). Firewall rules from other tools that only allow a program to
-reach `127.0.0.1` and its proxy block Proxidize the same way.
+**Coming from another proxifier:** exit it first (ProxyCap runs as a service). Kill switches and firewall rules other
+tools leave behind, for example ones that only let a program reach `127.0.0.1` and its proxy, block the program before
+Proxidize sees its traffic: remove them.
 
 ## Layout
 

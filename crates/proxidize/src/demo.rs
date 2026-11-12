@@ -1,5 +1,5 @@
-//! A plausible sample setup for screenshots: several game clients, each on its own exit, and a browser. Nothing is
-//! saved, started or sent anywhere. Documentation addresses only (RFC 5737).
+//! A plausible sample setup for screenshots: everyday programs, each on its own exit. Nothing is saved, started or
+//! sent anywhere. Documentation addresses and example domains only.
 
 use std::collections::HashMap;
 
@@ -24,16 +24,16 @@ pub fn scenario() -> (Config, HashMap<String, ProxyHealth>) {
         config.proxies.push(p.clone());
         p
     };
-    let ch = add("NVPN_CH", "100.72.14.9", 1080, true);
-    let al = add("NVPN_AL", "100.72.14.9", 1081, true);
-    let be = add("NVPN_BE", "100.72.14.9", 1082, true);
-    let es = add("NVPN_ES", "100.72.14.9", 1083, true);
-    let it = add("NVPN_IT", "100.72.14.9", 1084, true);
-    let se = add("NVPN_SE", "se.socks.example.net", 1080, true);
-    let uk = add("NVPN_UK", "100.72.14.9", 1088, true);
-    let de = add("NVPN_DE", "100.72.14.9", 1089, true);
-    let home = add("HOME_LAB", "100.91.3.40", 1088, false);
-    let fi = add("HETZ_FI", "100.72.14.9", 1087, true);
+    let ch = add("Zurich", "100.72.14.9", 1080, true);
+    let at = add("Vienna", "100.72.14.9", 1081, true);
+    let be = add("Brussels", "100.72.14.9", 1082, true);
+    let es = add("Madrid", "100.72.14.9", 1083, true);
+    let it = add("Milan", "100.72.14.9", 1084, true);
+    let se = add("Stockholm", "se.socks.example.net", 1080, true);
+    let uk = add("London", "100.72.14.9", 1088, true);
+    let de = add("Frankfurt", "100.72.14.9", 1089, true);
+    let home = add("Home lab", "100.91.3.40", 1088, false);
+    let fi = add("Helsinki", "100.72.14.9", 1087, true);
 
     let route = |name: &str, program: &str, proxy: &ProxyServer, enabled: bool| Rule {
         name: name.into(),
@@ -43,17 +43,22 @@ pub fn scenario() -> (Config, HashMap<String, ProxyHealth>) {
         ..Default::default()
     };
     config.rules = vec![
-        route("Wow1", r"F:\Wow1\Wow.exe", &ch, true),
-        route("Wow2", r"F:\Wow2\Wow.exe", &it, true),
-        route("Wow3", r"F:\Wow3\Wow.exe", &be, true),
-        route("Wow4", r"F:\Wow4\Wow.exe", &al, true),
-        route("Wow5", r"F:\Wow5\Wow.exe", &se, true),
-        route("Wow6", r"F:\Wow6\Wow.exe", &es, true),
-        route("Wow7", r"F:\Wow7\Wow.exe", &uk, true),
-        route("Wow8", r"F:\Wow8\Wow.exe", &de, false),
-        route("Captain", r"F:\Wow\Wow - Captain.exe", &home, true),
-        route("Firefox", r"F:\Downloads\FirefoxPortable\App\Firefox64\firefox.exe", &fi, true),
-        Rule { name: "Updater".into(), action: RuleAction::Block, programs: vec!["Launcher.exe".into()], ..Default::default() },
+        route("Firefox", r"C:\Program Files\Mozilla Firefox\firefox.exe", &fi, true),
+        route("Chrome", "chrome.exe", &ch, true),
+        route("Discord", "Discord.exe", &it, true),
+        route("Telegram", "Telegram.exe", &be, true),
+        route("qBittorrent", r"C:\Program Files\qBittorrent\qbittorrent.exe", &se, true),
+        route("Spotify", "Spotify.exe", &es, true),
+        route("Thunderbird", "thunderbird.exe", &uk, true),
+        route("Steam", r"C:\Program Files (x86)\Steam\steam.exe", &de, false),
+        route("Slack", "slack.exe", &at, true),
+        route("Remote desktop", "mstsc.exe", &home, true),
+        Rule {
+            name: "Telemetry".into(),
+            action: RuleAction::Block,
+            programs: vec!["CompatTelRunner.exe".into()],
+            ..Default::default()
+        },
         Rule {
             name: "Local network".into(),
             action: RuleAction::Direct,
@@ -80,7 +85,7 @@ pub fn scenario() -> (Config, HashMap<String, ProxyHealth>) {
         health.insert(p.id.clone(), h);
     };
     ok(&ch, "203.0.113.31", "Switzerland", "CH", "Zurich", 142);
-    ok(&al, "203.0.113.12", "Albania", "AL", "Tirana", 168);
+    ok(&at, "203.0.113.12", "Austria", "AT", "Vienna", 108);
     ok(&be, "203.0.113.70", "Belgium", "BE", "Brussels", 131);
     ok(&es, "203.0.113.211", "Spain", "ES", "Madrid", 154);
     ok(&it, "203.0.113.88", "Italy", "IT", "Milan", 119);
@@ -132,33 +137,32 @@ pub fn seed(tracker: &ConnectionTracker, log: &LogHub) {
             tracker.close(&r, None);
         }
     };
-    conn("Wow.exe", 11420, "logon.realm.example:3724", "NVPN_CH", "Wow1", 18_420, 96_310, true, None);
-    conn("Wow.exe", 11420, "world.realm.example:8085", "NVPN_CH", "Wow1", 1_204_880, 9_817_002, true, None);
-    conn("Wow.exe", 12088, "world.realm.example:8085", "NVPN_IT", "Wow2", 988_130, 7_302_551, true, None);
-    conn("Wow.exe", 9312, "world.realm.example:8085", "NVPN_BE", "Wow3", 1_022_004, 8_100_440, true, None);
-    conn("Wow.exe", 13740, "world.realm.example:8085", "NVPN_AL", "Wow4", 640_300, 5_908_112, true, None);
-    conn("Wow.exe", 6644, "world.realm.example:8085", "NVPN_SE", "Wow5", 712_880, 6_550_301, true, None);
-    conn("Wow.exe", 14212, "world.realm.example:8085", "NVPN_ES", "Wow6", 830_045, 7_011_920, true, None);
-    conn("Wow - Captain.exe", 5120, "world.realm.example:8085", "HOME_LAB", "Captain", 2_440_118, 15_330_276, true, None);
-    conn("firefox.exe", 7788, "forum.realm.example:443", "HETZ_FI", "Firefox", 81_220, 2_440_871, true, None);
-    conn("firefox.exe", 7788, "cdn.realm.example:443", "HETZ_FI", "Firefox", 12_004, 880_120, false, None);
+    conn("firefox.exe", 7788, "www.mozilla.org:443", "Helsinki", "Firefox", 81_220, 2_440_871, true, None);
+    conn("firefox.exe", 7788, "cdn.example.com:443", "Helsinki", "Firefox", 12_004, 880_120, false, None);
+    conn("chrome.exe", 11420, "mail.example.com:443", "Zurich", "Chrome", 204_880, 3_817_002, true, None);
+    conn("Discord.exe", 12088, "gateway.discord.gg:443", "Milan", "Discord", 98_130, 1_302_551, true, None);
+    conn("Telegram.exe", 9312, "api.telegram.org:443", "Brussels", "Telegram", 22_004, 410_440, true, None);
+    conn("qbittorrent.exe", 6644, "tracker.example.org:6969", "Stockholm", "qBittorrent", 1_712_880, 46_550_301, true, None);
+    conn("Spotify.exe", 14212, "audio-ak.spotify.example:443", "Madrid", "Spotify", 30_045, 27_011_920, true, None);
+    conn("slack.exe", 13740, "wss-primary.slack.com:443", "Vienna", "Slack", 40_300, 908_112, true, None);
+    conn("mstsc.exe", 5120, "desktop.home.example:3389", "Home lab", "Remote desktop", 2_440_118, 15_330_276, true, None);
     conn(
-        "Wow.exe",
+        "thunderbird.exe",
         9930,
-        "world.realm.example:8085",
-        "NVPN_UK",
-        "Wow7",
+        "imap.example.com:993",
+        "London",
+        "Thunderbird",
         0,
         0,
         false,
-        Some("NVPN_UK is blocked: its exit IP is your own IP"),
+        Some("London is blocked: its exit IP is your own IP"),
     );
 
     log.info("Proxidize started");
-    log.info("Kill switch: 9 programs can't connect unless Proxidize is redirecting them");
-    log.info("Started: 11 rules on, 10 proxies, strict mode, kill switch on 9 programs");
+    log.info("Kill switch: 2 programs can't connect unless Proxidize is redirecting them");
+    log.info("Started: 11 rules on, 10 proxies, strict mode, kill switch on 2 programs");
     log.info("Health check: 9/10 proxies OK, your IP 192.0.2.112 Greece (GR).");
-    log.warning("Health: NVPN_UK: Exit IP is your own IP: this proxy does not hide you.");
+    log.warning("Health: London: Exit IP is your own IP: this proxy does not hide you.");
     log.warning("Blocked 1 proxy after the proxy check and reset 1 connection through them");
-    log.info("TCP Wow.exe 192.168.1.20:52114 -> 203.0.113.88:8085: reset, opened before redirection (Wow2). The program will reconnect through its rule.");
+    log.info("TCP Discord.exe 192.168.1.20:52114 -> 203.0.113.88:443: reset, opened before redirection (Discord). The program will reconnect through its rule.");
 }

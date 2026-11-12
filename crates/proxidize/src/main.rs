@@ -125,7 +125,6 @@ fn main() -> eframe::Result {
     let tracker = Arc::new(ConnectionTracker::default());
 
     let mut warnings = Vec::new();
-    let mut first_run = false;
     let (config, store, health, backend) = if demo {
         let (config, health) = demo::scenario();
         demo::seed(&tracker, &log);
@@ -140,7 +139,6 @@ fn main() -> eframe::Result {
         if !proxidize_win::win::is_elevated() {
             warnings.push("Proxidize is not running as Administrator: redirection and the kill switch need it.".to_string());
         }
-        first_run = !ConfigStore::default_path().exists();
         let mut store = ConfigStore::new(ConfigStore::default_path());
         let config = match store.load() {
             Ok(c) => c,
@@ -169,7 +167,6 @@ fn main() -> eframe::Result {
         minimized: args.minimized,
         screenshots: args.screenshots.map(shots::Shots::new),
         warnings,
-        first_run,
         start: args.start,
         notice: args.after_update.map(|_| format!("Updated to Proxidize {}.", env!("CARGO_PKG_VERSION"))),
     };

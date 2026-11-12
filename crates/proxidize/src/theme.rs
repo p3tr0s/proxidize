@@ -1,4 +1,4 @@
-//! The patch-panel look, carried over from ProxyForge: graphite surfaces, three text roles, one teal accent,
+//! The patch-panel look: graphite surfaces, three text roles, one teal accent,
 //! coloured patch cables per proxy and square link lights for status. Every colour and font comes from here.
 
 use std::sync::Arc;

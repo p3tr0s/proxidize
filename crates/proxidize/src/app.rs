@@ -139,8 +139,6 @@ pub struct Startup {
     pub minimized: bool,
     pub screenshots: Option<crate::shots::Shots>,
     pub warnings: Vec<String>,
-    /// No config.json yet: offer ProxyForge's configuration.
-    pub first_run: bool,
     /// Start redirecting regardless of the settings (it was running before an update).
     pub start: bool,
     /// Shown in the message bar on start.
@@ -222,11 +220,6 @@ impl App {
                     b.sync_autostart(true);
                     Ok(())
                 });
-            }
-            if s.first_run {
-                if let Some(path) = ConfigStore::proxyforge_config_path().filter(|p| p.exists()) {
-                    app.import_proxyforge(&path);
-                }
             }
             if app.config.settings.check_for_updates && can_update() {
                 app.updates.next = Some(Instant::now() + Duration::from_secs(20));

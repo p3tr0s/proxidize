@@ -521,11 +521,6 @@ impl App {
                     if ui.button("From a ProxyCap file (.prs or .xml)").clicked() {
                         app.dialog = Some(Dialog::import_path());
                     }
-                    if let Some(path) = proxidize_core::config::ConfigStore::proxyforge_config_path().filter(|p| p.exists()) {
-                        if ui.button("From ProxyForge").clicked() {
-                            app.import_proxyforge(&path);
-                        }
-                    }
                 });
             },
         );

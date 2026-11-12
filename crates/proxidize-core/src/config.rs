@@ -1,7 +1,6 @@
 //! Configuration: proxies, chains, rules and settings.
 //!
-//! The JSON format is the one ProxyForge writes (PascalCase names, enums as strings, `passwordProtected` for
-//! encrypted passwords), so a ProxyForge `config.json` loads as is.
+//! The JSON format: PascalCase names, enums as strings, `passwordProtected` for encrypted passwords.
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -118,7 +117,7 @@ pub struct Rule {
     pub action: RuleAction,
     /// A proxy or chain id (when the action is Proxy).
     pub route_id: Option<String>,
-    /// Executable names (`chrome.exe`, `wow*.exe`) or full path globs (`C:\Games\*`). Empty = any program.
+    /// Executable names (`chrome.exe`, `firefox*.exe`) or full path globs (`C:\Games\*`). Empty = any program.
     pub programs: Vec<String>,
     /// Host globs, `.example.com`, IPs, CIDRs, IP ranges. Empty = any.
     pub destinations: Vec<String>,
@@ -332,11 +331,6 @@ impl ConfigStore {
         }
     }
 
-    /// ProxyForge's configuration, offered as an import on first start.
-    pub fn proxyforge_config_path() -> Option<PathBuf> {
-        std::env::var_os("ProgramData").map(|b| Path::new(&b).join("ProxyForge").join("config.json"))
-    }
-
     pub fn default_path() -> PathBuf {
         Self::data_directory().join("config.json")
     }
@@ -441,7 +435,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_proxyforge_json() {
+    fn reads_config_json() {
         let json = r##"{
           "Version": 1,
           "Settings": { "DnsMode": "FakeIp", "KillSwitch": true, "RelayPort": 34010 },
@@ -462,7 +456,7 @@ mod tests {
         assert_eq!(config.describe_route(Some("c1")), "Double (chain)");
 
         let written = serialize(&config).unwrap();
-        assert!(written.contains("\"ProxyIds\""), "PascalCase like ProxyForge");
+        assert!(written.contains("\"ProxyIds\""), "PascalCase");
         assert!(written.contains("\"Type\": \"Socks5\""));
         assert!(!written.contains("passwordProtected"), "omitted when empty");
     }

@@ -239,16 +239,20 @@ unsafe fn sockaddr_ip(p: *const c_void) -> Option<Ip> {
 
 // ------------------------------------------------------------------------------------------------ DPAPI
 
-/// Proxy passwords on disk are encrypted with DPAPI for the current Windows user. Same prefix and entropy as
-/// ProxyForge, so a ProxyForge config comes over with its passwords.
+/// Proxy passwords on disk are encrypted with DPAPI for the current Windows user.
 pub struct Dpapi;
 
 const DPAPI_PREFIX: &str = "dpapi:";
-const DPAPI_ENTROPY: &[u8] = b"ProxyForge proxy credentials v1";
+const DPAPI_ENTROPY: &[u8] = b"Proxidize proxy credentials v1";
+/// The entropy of configs written before 0.3.0: still read, replaced on the next save.
+const DPAPI_ENTROPY_V0: &[u8] = &[
+    0x50, 0x72, 0x6f, 0x78, 0x79, 0x46, 0x6f, 0x72, 0x67, 0x65, 0x20, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x20, 0x63, 0x72, 0x65, 0x64,
+    0x65, 0x6e, 0x74, 0x69, 0x61, 0x6c, 0x73, 0x20, 0x76, 0x31,
+];
 
-fn dpapi(input: &[u8], protect: bool) -> Option<Vec<u8>> {
+fn dpapi(input: &[u8], protect: bool, entropy: &[u8]) -> Option<Vec<u8>> {
     let data_in = CRYPT_INTEGER_BLOB { cbData: input.len() as u32, pbData: input.as_ptr() as *mut u8 };
-    let entropy = CRYPT_INTEGER_BLOB { cbData: DPAPI_ENTROPY.len() as u32, pbData: DPAPI_ENTROPY.as_ptr() as *mut u8 };
+    let entropy = CRYPT_INTEGER_BLOB { cbData: entropy.len() as u32, pbData: entropy.as_ptr() as *mut u8 };
     let mut out = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
     let ok = unsafe {
         if protect {
@@ -284,7 +288,7 @@ fn dpapi(input: &[u8], protect: bool) -> Option<Vec<u8>> {
 impl SecretProtector for Dpapi {
     fn protect(&self, plain: &str) -> String {
         use base64::Engine as _;
-        match dpapi(plain.as_bytes(), true) {
+        match dpapi(plain.as_bytes(), true, DPAPI_ENTROPY) {
             Some(bytes) => format!("{DPAPI_PREFIX}{}", base64::engine::general_purpose::STANDARD.encode(bytes)),
             None => plain.to_string(), // never lose a password; the config store warns about plain text
         }
@@ -294,7 +298,7 @@ impl SecretProtector for Dpapi {
         use base64::Engine as _;
         let encoded = value.strip_prefix(DPAPI_PREFIX)?;
         let bytes = base64::engine::general_purpose::STANDARD.decode(encoded).ok()?;
-        String::from_utf8(dpapi(&bytes, false)?).ok()
+        String::from_utf8(dpapi(&bytes, false, DPAPI_ENTROPY).or_else(|| dpapi(&bytes, false, DPAPI_ENTROPY_V0))?).ok()
     }
 }
 
