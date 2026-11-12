@@ -22,6 +22,21 @@ webpki-roots = "0.26"
 tokio-util = "0.7"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 socket2 = { version = "0.5", features = ["all"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_NetworkManagement_WindowsFilteringPlatform",
+    "Win32_Networking_WinSock",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Security_Cryptography",
+    "Win32_Storage_FileSystem",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Rpc",
+    "Win32_System_Threading",
+] }
 uuid = { version = "1", features = ["v4"] }
 proxidize-core = { path = "crates/proxidize-core" }
 proxidize-win = { path = "crates/proxidize-win" }
@@ -30,5 +45,4 @@ proxidize-win = { path = "crates/proxidize-win" }
 opt-level = 3
 lto = "fat"
 codegen-units = 1
-panic = "abort"
 strip = true

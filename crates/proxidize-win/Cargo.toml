@@ -4,6 +4,15 @@ description = "Windows side of Proxidize: WinDivert redirection, WFP kill switch
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+build = "build.rs"
 
 [dependencies]
 proxidize-core.workspace = true
+tokio.workspace = true
+socket2.workspace = true
+tokio-util.workspace = true
+uuid.workspace = true
+base64.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true }

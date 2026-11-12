@@ -32,17 +32,23 @@ ProxyForge stays the reference until every box below is ticked; its self-tests w
 - [x] Health check: IP/country lookup through each route, HTTP and HTTPS (rustls), redirects, chunked bodies, leak / shared-IP annotation, change descriptions
 - [x] ProxyCap import: XML (proxies, chains, rules, ports, IPs, hosts, remote DNS exceptions) and binary `machine.prs`
 
-### Windows (`proxidize-win`)
+### Windows (`proxidize-win`) — engine done, needs a run on real Windows
 
-- [ ] WinDivert loaded from the exe (embedded DLL + `.sys`, extracted to `%ProgramData%\Proxidize\bin\<hash>`)
-- [ ] Process lookup: TCP/UDP owner tables, pid creation-time validation, path cache
-- [ ] TCP redirector: SYN reflection to the relay, NAT, strict fail-closed handling, reset of pre-existing flows, TIME_WAIT leftovers dropped
-- [ ] UDP redirector: SOCKS5 UDP ASSOCIATE per route, fragments reassembled, UDP blocked when the route can't carry it
-- [ ] DNS: fake-IP interception, sniffing for host-name rules, own resolver port excluded
-- [ ] WFP kill switch: persistent per-app block filters + dynamic-session permit while running, `--remove-killswitch`
-- [ ] DPAPI password protection (same entropy as ProxyForge, so its config imports with passwords)
-- [ ] Start with Windows (Task Scheduler, elevated), firewall rule for the relay
-- [ ] Engine: start/stop, live config apply, periodic health checks with route guard, notifications
+The redirection logic is written against small traits (packet diversion, process tables, WFP), so it is tested on
+Linux too: the engine runs end to end against a simulated platform (a proxied connection through the real relay and
+a SOCKS5 server, block/RST, strict-mode drops, pre-existing flows reset, fake-IP DNS, UDP rules, live config).
+
+- [x] WinDivert loaded at runtime: embedded DLL + `.sys`, extracted to `%ProgramData%\Proxidize\bin\WinDivert-<hash>`, folder locked to SYSTEM/Administrators and files verified byte for byte before loading
+- [x] Process lookup: socket-layer events + TCP/UDP owner tables, pid creation-time validation
+- [x] TCP redirector: SYN reflection to the relay, NAT, strict fail-closed handling, reset of pre-existing flows, TIME_WAIT leftovers dropped, deferred owner lookup
+- [x] UDP redirector: SOCKS5 UDP ASSOCIATE per route, fragments reassembled, UDP blocked when the route can't carry it, health-check guard
+- [x] DNS: fake-IP interception, sniffing for host-name rules, own resolver port excluded
+- [x] WFP kill switch: persistent per-app block filters + dynamic-session permit while running, learned paths, `--remove-killswitch` helper
+- [x] DPAPI password protection (same entropy as ProxyForge, so its config imports with passwords)
+- [x] Start with Windows (Task Scheduler, elevated), firewall rule for the relay, DNS cache flush, adapter DNS servers
+- [x] Engine: start/stop, live config apply, kill-switch learning, maintenance sweeps, route guard
+- [ ] Health checks on a schedule, notifications (with the app)
+- [ ] First run on real Windows
 
 ### App (`proxidize`)
 

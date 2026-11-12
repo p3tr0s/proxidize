@@ -387,7 +387,13 @@ dependencies = [
 name = "proxidize-win"
 version = "0.1.0-dev"
 dependencies = [
+ "base64",
  "proxidize-core",
+ "socket2 0.5.10",
+ "tokio",
+ "tokio-util",
+ "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
