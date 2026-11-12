@@ -8,3 +8,19 @@ license.workspace = true
 [dependencies]
 proxidize-core.workspace = true
 proxidize-win.workspace = true
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+tokio.workspace = true
+chrono.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+eframe = { version = "0.37", default-features = false, features = ["accesskit"] }
+tray-icon = "0.26"
+windows-sys.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Linux only builds the preview (screenshots, design work).
+eframe = { version = "0.37", default-features = false, features = ["x11"] }
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

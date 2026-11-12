@@ -2,6 +2,7 @@
 //! HTTP/1.1 client (with TLS through rustls) that runs over the proxy connector, so the URL's host name is sent to
 //! the proxy instead of being resolved locally.
 
+use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -231,7 +232,11 @@ pub fn describe_change(previous: Option<&ProxyHealth>, current: &ProxyHealth) ->
     let err = current.error.as_deref().unwrap_or_default();
     let exit = format!("{} {}", current.exit_ip.as_deref().unwrap_or_default(), current.country_text()).trim_end().to_string();
     let Some(previous) = previous else {
-        return (!current.ok).then(|| format!("{} is down: {err}", current.name));
+        return match (&current.warning, current.ok) {
+            (_, false) => Some(format!("{} is down: {err}", current.name)),
+            (Some(w), true) => Some(format!("{}: {w}", current.name)),
+            (None, true) => None,
+        };
     };
     if previous.ok && !current.ok {
         return Some(format!("{} is down: {err}", current.name));
@@ -253,6 +258,134 @@ pub fn describe_change(previous: Option<&ProxyHealth>, current: &ProxyHealth) ->
         }
     }
     None
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// A full round
+
+/// What a round of checks needs.
+#[derive(Clone)]
+pub struct Round {
+    /// The proxies to check now (all of them, or a selection).
+    pub proxies: Vec<ProxyServer>,
+    /// Every configured proxy id: results for removed proxies are dropped.
+    pub configured: Vec<String>,
+    pub check_direct: bool,
+    pub url: String,
+    pub timeout: Duration,
+    /// Results of earlier rounds, by id.
+    pub previous: HashMap<String, ProxyHealth>,
+    /// Your own IP from an earlier round, used when this round's direct lookup fails.
+    pub known_own_ip: Option<String>,
+    pub block_leaking: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RoundResult {
+    /// Every known result (this round's plus earlier ones for proxies not checked now), annotated.
+    pub health: HashMap<String, ProxyHealth>,
+    /// Proxies that must carry no traffic (id -> reason).
+    pub blocked: HashMap<String, String>,
+    /// What changed, as (message, is_ok).
+    pub changes: Vec<(String, bool)>,
+    pub own_ip: Option<String>,
+    /// A proxy started exposing your IP in this round.
+    pub new_leak: bool,
+    pub summary: String,
+}
+
+/// Checks every proxy in `round` (four at a time, plus your own IP), retries proxies that just failed once, then
+/// annotates leaks and shared exit IPs and works out what to block.
+pub async fn check_round(round: Round, resolver: Arc<dyn HostResolver>) -> RoundResult {
+    let url = if round.url.trim().is_empty() { DEFAULT_URL.to_string() } else { round.url.trim().to_string() };
+    let gate = Arc::new(tokio::sync::Semaphore::new(4));
+    let run = |id: String, name: String, route: Vec<ProxyServer>| {
+        let gate = gate.clone();
+        let resolver = resolver.clone();
+        let url = url.clone();
+        let timeout = round.timeout;
+        async move {
+            let _permit = gate.acquire_owned().await;
+            check(&id, &name, &route, &url, resolver, timeout).await
+        }
+    };
+    let mut tasks: Vec<_> =
+        round.proxies.iter().map(|p| tokio::spawn(run(p.id.clone(), p.name.clone(), vec![p.clone()]))).collect();
+    if round.check_direct {
+        tasks.push(tokio::spawn(run(DIRECT_ID.into(), "Your IP".into(), Vec::new())));
+    }
+    let mut fresh = Vec::new();
+    for t in tasks {
+        if let Ok(h) = t.await {
+            fresh.push(h);
+        }
+    }
+
+    // A proxy that just failed gets one more try before it is reported down (no alerts on a blip).
+    let retry: Vec<ProxyServer> = round
+        .proxies
+        .iter()
+        .filter(|p| fresh.iter().any(|f| f.id == p.id && !f.ok) && round.previous.get(&p.id).is_none_or(|b| b.ok))
+        .cloned()
+        .collect();
+    if !retry.is_empty() {
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let again: Vec<_> = retry.iter().map(|p| tokio::spawn(run(p.id.clone(), p.name.clone(), vec![p.clone()]))).collect();
+        for t in again {
+            if let Ok(h) = t.await {
+                if let Some(slot) = fresh.iter_mut().find(|f| f.id == h.id) {
+                    *slot = h;
+                }
+            }
+        }
+    }
+
+    let own_ip = fresh.iter().find(|f| f.id == DIRECT_ID && f.ok).and_then(|f| f.exit_ip.clone()).or(round.known_own_ip.clone());
+    // Compare against every known result: a partial check still sees the other proxies.
+    let mut combined: Vec<ProxyHealth> = round
+        .previous
+        .values()
+        .filter(|h| (round.configured.contains(&h.id) || h.id == DIRECT_ID) && !fresh.iter().any(|f| f.id == h.id))
+        .cloned()
+        .map(|mut h| {
+            h.warning = None;
+            h
+        })
+        .collect();
+    combined.extend(fresh);
+    let mut annotated = annotate(&combined, if round.check_direct { own_ip.as_deref() } else { None });
+
+    // Fail closed: a proxy that exposes your IP carries nothing until a check shows it is fixed.
+    let blocked: HashMap<String, String> = if round.block_leaking {
+        annotated
+            .iter()
+            .filter(|h| h.state == HealthState::ExposesYourIp)
+            .map(|h| (h.id.clone(), "its exit IP is your own IP".to_string()))
+            .collect()
+    } else {
+        HashMap::new()
+    };
+    for h in &mut annotated {
+        h.blocked = blocked.contains_key(&h.id);
+    }
+    let mut changes = Vec::new();
+    for h in annotated.iter().filter(|h| h.id != DIRECT_ID) {
+        if let Some(change) = describe_change(round.previous.get(&h.id), h) {
+            changes.push((change, h.state == HealthState::Ok));
+        }
+    }
+    let new_leak = annotated.iter().any(|h| {
+        h.state == HealthState::ExposesYourIp && round.previous.get(&h.id).is_none_or(|p| p.state != HealthState::ExposesYourIp)
+    });
+    let proxies: Vec<&ProxyHealth> = annotated.iter().filter(|h| h.id != DIRECT_ID).collect();
+    let ok = proxies.iter().filter(|h| h.ok).count();
+    let mut summary = format!("Health check: {ok}/{} proxies OK", proxies.len());
+    if let Some(me) = annotated.iter().find(|h| h.id == DIRECT_ID && h.ok) {
+        summary.push_str(&format!(", your IP {} {}", me.exit_ip.as_deref().unwrap_or_default(), me.country_text()));
+    }
+    summary = summary.trim_end().to_string() + ".";
+    let health = annotated.into_iter().map(|h| (h.id.clone(), h)).collect();
+    RoundResult { health, blocked, changes, own_ip, new_leak, summary }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -553,6 +686,73 @@ mod tests {
     fn chunked() {
         assert_eq!(decode_chunked(b"4\r\nWiki\r\n5;x=1\r\npedia\r\n0\r\n\r\n").unwrap(), b"Wikipedia");
         assert!(decode_chunked(b"4\r\nWi").is_none());
+    }
+
+    #[tokio::test]
+    async fn round_flags_leaks_and_blocks() {
+        use tokio::net::TcpListener;
+        // An IP service that always answers 192.0.2.112: direct and through the "proxy" alike (a leaking proxy).
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            loop {
+                let (mut s, _) = listener.accept().await.unwrap();
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 2048];
+                    let _ = s.read(&mut buf).await;
+                    let body = "192.0.2.112";
+                    let _ =
+                        s.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}", body.len()).as_bytes()).await;
+                });
+            }
+        });
+        // An HTTP proxy that tunnels everything to the IP service.
+        let proxy = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_port = proxy.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            loop {
+                let (mut s, _) = proxy.accept().await.unwrap();
+                tokio::spawn(async move {
+                    let mut header = Vec::new();
+                    let mut one = [0u8; 1];
+                    while !header.ends_with(b"\r\n\r\n") {
+                        if s.read_exact(&mut one).await.is_err() {
+                            return;
+                        }
+                        header.push(one[0]);
+                    }
+                    let mut up = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+                    s.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await.unwrap();
+                    let _ = tokio::io::copy_bidirectional(&mut s, &mut up).await;
+                });
+            }
+        });
+        let p = ProxyServer {
+            id: "p1".into(),
+            name: "NVPN_UK".into(),
+            kind: crate::config::ProxyType::Http,
+            host: "127.0.0.1".into(),
+            port: proxy_port,
+            ..Default::default()
+        };
+        let round = Round {
+            proxies: vec![p],
+            configured: vec!["p1".into()],
+            check_direct: true,
+            url: format!("http://127.0.0.1:{port}/"),
+            timeout: Duration::from_secs(5),
+            previous: HashMap::new(),
+            known_own_ip: None,
+            block_leaking: true,
+        };
+        let result = check_round(round, Arc::new(StaticResolver::default())).await;
+        assert_eq!(result.own_ip.as_deref(), Some("192.0.2.112"));
+        assert_eq!(result.health["p1"].state, HealthState::ExposesYourIp);
+        assert!(result.health["p1"].blocked);
+        assert_eq!(result.blocked.keys().collect::<Vec<_>>(), vec!["p1"]);
+        assert!(result.new_leak);
+        assert_eq!(result.summary, "Health check: 1/1 proxies OK, your IP 192.0.2.112.");
+        assert!(result.changes.iter().any(|(m, ok)| m.contains("does not hide you") && !ok));
     }
 
     #[tokio::test]

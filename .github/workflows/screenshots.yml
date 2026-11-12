@@ -1,0 +1,35 @@
+name: UI screenshots
+
+# Renders every page with the demo data (`proxidize --screenshots`) and publishes the PNGs to the ui-screenshots
+# branch, so the interface can be reviewed without a Windows machine. The preview build runs on Linux.
+
+on:
+  push:
+    branches: [main, ui-preview]
+    paths: ['crates/proxidize/**', '.github/workflows/screenshots.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: System packages
+        run: sudo apt-get update && sudo apt-get install -y xvfb libxkbcommon-x11-0 libgl1-mesa-dri libegl1 fonts-dejavu-core fonts-inter
+      - run: cargo build -p proxidize
+      - name: Render
+        run: xvfb-run -a -s "-screen 0 1600x1000x24" ./target/debug/proxidize --screenshots shots
+      - name: Publish
+        run: |
+          cd shots
+          git init -q -b ui-screenshots
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -q -m "UI screenshots for ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ui-screenshots

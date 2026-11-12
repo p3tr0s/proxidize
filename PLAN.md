@@ -47,18 +47,18 @@ a SOCKS5 server, block/RST, strict-mode drops, pre-existing flows reset, fake-IP
 - [x] DPAPI password protection (same entropy as ProxyForge, so its config imports with passwords)
 - [x] Start with Windows (Task Scheduler, elevated), firewall rule for the relay, DNS cache flush, adapter DNS servers
 - [x] Engine: start/stop, live config apply, kill-switch learning, maintenance sweeps, route guard
-- [ ] Health checks on a schedule, notifications (with the app)
+- [x] Health checks on a schedule, notifications (with the app)
 - [ ] First run on real Windows
 
-### App (`proxidize`)
+### App (`proxidize`) — done
 
-- [ ] egui window in the ProxyForge dark patch-panel design: Overview switchboard, Rules, Proxies, Chains, Connections, Log, Settings
-- [ ] Editors for proxies (with cable colour), chains, rules (with *Running...* program picker), credentials for many proxies
-- [ ] ProxyCap import preview (merge / replace, backup of the current config)
-- [ ] Import ProxyForge's `config.json` on first run
-- [ ] Tray icon as a link light, start minimised, single instance
-- [ ] Admin manifest, icon, version info embedded in the exe
-- [ ] `--screenshots` for the CI preview workflow
+- [x] egui window in the ProxyForge patch-panel design: Overview switchboard, Rules, Proxies, Chains, Connections, Log, Settings
+- [x] Editors for proxies (with cable colour and a test), chains, rules (with a running-program picker), credentials for many proxies
+- [x] ProxyCap import preview (merge / replace, backup of the current config), ProxyForge import (passwords included)
+- [x] Scheduled proxy checks with retry, leak blocking and notifications (tray balloons)
+- [x] Tray icon as a link light, close to tray, start minimised, single instance
+- [x] Admin manifest, icon, version info embedded in the exe
+- [x] `--screenshots` and the UI screenshots workflow (Linux preview build under Xvfb)
 
 ### Release
 
