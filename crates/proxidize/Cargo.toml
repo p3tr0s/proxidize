@@ -1,0 +1,10 @@
+[package]
+name = "proxidize"
+description = "Per-program proxy redirection for Windows, in one exe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+proxidize-core.workspace = true
+proxidize-win.workspace = true

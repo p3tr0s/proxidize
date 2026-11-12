@@ -1,0 +1,6 @@
+/target
+**/*.rs.bk
+/dist
+/release
+/shots
+/third_party

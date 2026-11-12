@@ -1,0 +1,60 @@
+# Plan: ProxyForge in Rust
+
+Proxidize is the Rust rewrite of [ProxyForge](https://github.com/p3tr0s/proxyforge) (C#/.NET 10). The goal is the
+same app as **one `proxidize.exe`**: no runtime to install, no DLLs or driver files next to it. WinDivert's DLL and
+signed driver are embedded and extracted on first run.
+
+ProxyForge stays the reference until every box below is ticked; its self-tests were ported alongside the code
+(the reference vectors for checksums, the sanitized `machine.prs` fixture, the proxy and relay end-to-end tests).
+
+## Layout
+
+| Crate | What it holds | Builds on |
+|---|---|---|
+| `proxidize-core` | Config, rules, packet codec, fragments, DNS, fake IPs, proxy clients and chains, relay, health check, ProxyCap import, log | any OS (tested on Linux and Windows in CI) |
+| `proxidize-win` | WinDivert (embedded), TCP/UDP redirectors, DNS interception, process lookup, WFP kill switch, DPAPI, autostart, engine | Windows |
+| `proxidize` | The egui app and the tray | Windows |
+
+## Parity checklist
+
+### Core (`proxidize-core`) — done
+
+- [x] Addresses, CIDRs, ranges, targets with IDN normalisation
+- [x] Wildcards, `.domain` host patterns, port ranges, fake-IP domain scope
+- [x] Config: ProxyForge's JSON format as is (PascalCase, enums as strings), example config, atomic save, password protection hook, plain-password migration
+- [x] Rule engine: programs (name/path globs), destinations (hosts, IPs, CIDRs, ranges), ports, transport; first match wins; invalid routes block; kill-switch program set
+- [x] Packets: IPv4/IPv6 + TCP/UDP parse and rewrite, checksums (C# reference vectors), IPv6 extension headers, UDP build, RST for SYN and for established segments
+- [x] IP fragment reassembly (IPv4 and IPv6), overlap/oversize/expiry handling, bounded
+- [x] DNS codec, compression pointers, fake-IP pool with recycling, reverse DNS cache (bounded)
+- [x] Upstream DNS client from a fixed source port, server selection
+- [x] SOCKS5 (no auth / user+password), SOCKS4/4a, HTTP CONNECT (Basic), chains of any length, SOCKS5 UDP header codec
+- [x] Relay: NAT table, reflected-connection accept, remote DNS by name, route guard, AbortAll / AbortRoutes with RST, byte counters, connection list
+- [x] Health check: IP/country lookup through each route, HTTP and HTTPS (rustls), redirects, chunked bodies, leak / shared-IP annotation, change descriptions
+- [x] ProxyCap import: XML (proxies, chains, rules, ports, IPs, hosts, remote DNS exceptions) and binary `machine.prs`
+
+### Windows (`proxidize-win`)
+
+- [ ] WinDivert loaded from the exe (embedded DLL + `.sys`, extracted to `%ProgramData%\Proxidize\bin\<hash>`)
+- [ ] Process lookup: TCP/UDP owner tables, pid creation-time validation, path cache
+- [ ] TCP redirector: SYN reflection to the relay, NAT, strict fail-closed handling, reset of pre-existing flows, TIME_WAIT leftovers dropped
+- [ ] UDP redirector: SOCKS5 UDP ASSOCIATE per route, fragments reassembled, UDP blocked when the route can't carry it
+- [ ] DNS: fake-IP interception, sniffing for host-name rules, own resolver port excluded
+- [ ] WFP kill switch: persistent per-app block filters + dynamic-session permit while running, `--remove-killswitch`
+- [ ] DPAPI password protection (same entropy as ProxyForge, so its config imports with passwords)
+- [ ] Start with Windows (Task Scheduler, elevated), firewall rule for the relay
+- [ ] Engine: start/stop, live config apply, periodic health checks with route guard, notifications
+
+### App (`proxidize`)
+
+- [ ] egui window in the ProxyForge dark patch-panel design: Overview switchboard, Rules, Proxies, Chains, Connections, Log, Settings
+- [ ] Editors for proxies (with cable colour), chains, rules (with *Running...* program picker), credentials for many proxies
+- [ ] ProxyCap import preview (merge / replace, backup of the current config)
+- [ ] Import ProxyForge's `config.json` on first run
+- [ ] Tray icon as a link light, start minimised, single instance
+- [ ] Admin manifest, icon, version info embedded in the exe
+- [ ] `--screenshots` for the CI preview workflow
+
+### Release
+
+- [x] CI: core on Linux; workspace clippy + tests + release build on Windows
+- [ ] First release (`0.1.0`) once the app covers ProxyForge's features

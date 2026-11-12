@@ -1,0 +1,9 @@
+[package]
+name = "proxidize-win"
+description = "Windows side of Proxidize: WinDivert redirection, WFP kill switch, process lookup"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+proxidize-core.workspace = true

@@ -1,0 +1,102 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  core:
+    # The platform-independent crate is tested on Linux too: fast feedback, and it keeps it portable.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy -p proxidize-core --all-targets -- -D warnings
+      - run: cargo test -p proxidize-core
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Version
+        id: version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A release is made when the workspace version (Cargo.toml) has no release yet and isn't a -dev version.
+          $line = Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1
+          $v = $line.Matches[0].Groups[1].Value
+          $release = 'false'
+          if ("${{ github.event_name }}" -eq 'push' -and "${{ github.ref_name }}" -eq 'main' -and $v -notmatch '-dev$') {
+            gh release view "v$v" --repo "${{ github.repository }}" *> $null
+            if ($LASTEXITCODE -ne 0) { $release = 'true' }
+            $global:LASTEXITCODE = 0
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "release=$release" >> $env:GITHUB_OUTPUT
+          Write-Host "Version $v, release: $release"
+
+      - name: WinDivert
+        shell: pwsh
+        run: ./scripts/get-windivert.ps1
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Build
+        run: cargo build --release -p proxidize
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory -Force release, out/licenses | Out-Null
+          Copy-Item target/release/proxidize.exe out/
+          Copy-Item README.md out/
+          Copy-Item LICENSE out/licenses/Proxidize-LICENSE.txt
+          Copy-Item third_party/WinDivert/LICENSE out/licenses/WinDivert-LICENSE.txt -ErrorAction SilentlyContinue
+          Copy-Item target/release/proxidize.exe "release/proxidize-$v-win-x64.exe"
+          Compress-Archive -Path out/* -DestinationPath "release/proxidize-$v-win-x64.zip"
+          Get-ChildItem release | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          } | Set-Content release/SHA256SUMS.txt
+          Get-ChildItem release | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proxidize-${{ steps.version.outputs.version }}
+          path: release/*
+
+      - name: GitHub release
+        if: steps.version.outputs.release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Proxidize ${{ steps.version.outputs.version }}
+          files: release/*
+          generate_release_notes: true
+          body: |
+            One file: `proxidize-*-win-x64.exe`. It asks for Administrator rights (needed for the WinDivert driver and
+            the kill switch). The zip holds the same exe plus the licenses.

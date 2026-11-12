@@ -1,0 +1,34 @@
+[workspace]
+resolver = "2"
+members = ["crates/proxidize-core", "crates/proxidize-win", "crates/proxidize"]
+
+[workspace.package]
+version = "0.1.0-dev"
+edition = "2021"
+license = "MIT"
+authors = ["Petros Aposporis"]
+repository = "https://github.com/p3tr0s/proxidize"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "sync", "macros"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+idna = "1"
+quick-xml = "0.37"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+webpki-roots = "0.26"
+tokio-util = "0.7"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+socket2 = { version = "0.5", features = ["all"] }
+uuid = { version = "1", features = ["v4"] }
+proxidize-core = { path = "crates/proxidize-core" }
+proxidize-win = { path = "crates/proxidize-win" }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
