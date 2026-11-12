@@ -11,6 +11,7 @@ mod shots;
 mod theme;
 #[cfg(windows)]
 mod tray;
+mod updater;
 mod widgets;
 
 use std::collections::HashMap;
@@ -27,16 +28,23 @@ struct Args {
     remove_kill_switch: bool,
     screenshots: Option<PathBuf>,
     demo: bool,
+    /// Started by an update: the previous instance's pid, to wait for.
+    after_update: Option<u32>,
+    /// Start redirecting even if the settings don't (it was running before the update).
+    start: bool,
 }
 
 fn args() -> Args {
-    let mut a = Args { minimized: false, remove_kill_switch: false, screenshots: None, demo: false };
+    let mut a =
+        Args { minimized: false, remove_kill_switch: false, screenshots: None, demo: false, after_update: None, start: false };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         match arg.to_ascii_lowercase().as_str() {
             "--minimized" => a.minimized = true,
             "--remove-killswitch" => a.remove_kill_switch = true,
             "--demo" => a.demo = true,
+            "--start" => a.start = true,
+            "--after-update" => a.after_update = it.next().and_then(|p| p.parse().ok()),
             "--screenshots" => a.screenshots = Some(it.next().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("shots"))),
             _ => {}
         }
@@ -103,6 +111,10 @@ fn main() -> eframe::Result {
     }
 
     let demo = args.demo || args.screenshots.is_some();
+    if let Some(pid) = args.after_update {
+        updater::wait_for_exit(pid, std::time::Duration::from_secs(30));
+        updater::clean_up();
+    }
     #[cfg(windows)]
     if !demo && !single_instance() {
         return Ok(()); // already running: it lives in the tray
@@ -121,6 +133,9 @@ fn main() -> eframe::Result {
         (config, None, health, backend)
     } else {
         log.info(format!("Proxidize {} started", env!("CARGO_PKG_VERSION")));
+        if args.after_update.is_some() {
+            log.info(format!("Updated to Proxidize {}.", env!("CARGO_PKG_VERSION")));
+        }
         #[cfg(windows)]
         if !proxidize_win::win::is_elevated() {
             warnings.push("Proxidize is not running as Administrator: redirection and the kill switch need it.".to_string());
@@ -155,6 +170,8 @@ fn main() -> eframe::Result {
         screenshots: args.screenshots.map(shots::Shots::new),
         warnings,
         first_run,
+        start: args.start,
+        notice: args.after_update.map(|_| format!("Updated to Proxidize {}.", env!("CARGO_PKG_VERSION"))),
     };
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

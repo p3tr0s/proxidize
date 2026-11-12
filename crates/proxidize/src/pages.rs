@@ -1010,6 +1010,31 @@ impl App {
         egui::ScrollArea::vertical().auto_shrink([false, false]).id_salt("settings").show(ui, |ui| {
             ui.set_max_width(760.0);
             settings_form(ui, &mut draft);
+            widgets::section(ui, "Updates");
+            widgets::square_check(
+                ui,
+                &mut draft.check_for_updates,
+                "Check GitHub for new versions (on start, then every 12 hours)",
+            );
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(format!("Proxidize {}", env!("CARGO_PKG_VERSION"))).font(body()).color(TEXT));
+                let label = if self.updates.busy == Some("Checking") { "Checking" } else { "Check now" };
+                let enabled = self.updates.busy.is_none() && !self.demo;
+                if widgets::button_enabled(ui, label, Kind::Secondary, enabled).clicked() {
+                    self.check_updates(true);
+                }
+                if self.updates.available.is_some() && crate::app::can_update() {
+                    let downloading = self.updates.busy == Some("Downloading");
+                    let label = if downloading { "Downloading" } else { "Update and restart" };
+                    if widgets::button_enabled(ui, label, Kind::Primary, !downloading).clicked() {
+                        self.download_update();
+                    }
+                }
+            });
+            if let Some(status) = &self.updates.status {
+                widgets::hint(ui, status);
+            }
+            widgets::hint(ui, "Updates are checked against the release's SHA-256 before they're installed.");
             widgets::section(ui, "Maintenance");
             ui.horizontal(|ui| {
                 if widgets::button(ui, "Open data folder", Kind::Secondary).clicked() {

@@ -32,7 +32,7 @@ ProxyForge stays the reference until every box below is ticked; its self-tests w
 - [x] Health check: IP/country lookup through each route, HTTP and HTTPS (rustls), redirects, chunked bodies, leak / shared-IP annotation, change descriptions
 - [x] ProxyCap import: XML (proxies, chains, rules, ports, IPs, hosts, remote DNS exceptions) and binary `machine.prs`
 
-### Windows (`proxidize-win`) — engine done, needs a run on real Windows
+### Windows (`proxidize-win`) — done, running on Windows
 
 The redirection logic is written against small traits (packet diversion, process tables, WFP), so it is tested on
 Linux too: the engine runs end to end against a simulated platform (a proxied connection through the real relay and
@@ -48,7 +48,7 @@ a SOCKS5 server, block/RST, strict-mode drops, pre-existing flows reset, fake-IP
 - [x] Start with Windows (Task Scheduler, elevated), firewall rule for the relay, DNS cache flush, adapter DNS servers
 - [x] Engine: start/stop, live config apply, kill-switch learning, maintenance sweeps, route guard
 - [x] Health checks on a schedule, notifications (with the app)
-- [ ] First run on real Windows
+- [x] First run on real Windows (0.1.0: redirection works once ProxyForge's leftover kill switch is removed)
 
 ### App (`proxidize`) — done
 
@@ -59,11 +59,14 @@ a SOCKS5 server, block/RST, strict-mode drops, pre-existing flows reset, fake-IP
 - [x] Tray icon as a link light, close to tray, start minimised, single instance
 - [x] Admin manifest, icon, version info embedded in the exe
 - [x] `--screenshots` and the UI screenshots workflow (Linux preview build under Xvfb)
+- [x] System clipboard (0.1.1)
+- [x] Updates: GitHub release check on start and every 12 hours, banner + tray notice, one-click install verified against `SHA256SUMS.txt`, exe swap and restart (0.2.0)
 
 ### Release
 
 - [x] CI: core on Linux; workspace clippy + tests + release build on Windows
-- [ ] First release (`0.1.0`) once the app covers ProxyForge's features
+- [x] First release (`0.1.0`)
+- [ ] Make the repository public so the update check can see releases
 
 ## After 0.1.0: closing the gap to ProxyCap
 

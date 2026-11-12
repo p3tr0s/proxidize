@@ -16,3 +16,4 @@ pub mod proxycap;
 pub mod relay;
 pub mod resolve;
 pub mod rules;
+pub mod update;

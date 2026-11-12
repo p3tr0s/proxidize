@@ -180,6 +180,8 @@ pub struct Settings {
     // Logging
     pub log_direct_connections: bool,
     pub verbose_logging: bool,
+    // Updates
+    pub check_for_updates: bool,
 }
 
 impl Default for Settings {
@@ -208,6 +210,7 @@ impl Default for Settings {
             health_check_notify: true,
             log_direct_connections: false,
             verbose_logging: false,
+            check_for_updates: true,
         }
     }
 }
@@ -442,7 +445,7 @@ mod tests {
         let json = r##"{
           "Version": 1,
           "Settings": { "DnsMode": "FakeIp", "KillSwitch": true, "RelayPort": 34010 },
-          "Proxies": [ { "Id": "a1", "Name": "NVPN_CH", "Type": "Socks5", "Host": "100.104.28.50", "Port": 1080,
+          "Proxies": [ { "Id": "a1", "Name": "NVPN_CH", "Type": "Socks5", "Host": "198.51.100.50", "Port": 1080,
                          "Username": "relay", "Color": "#4C8DF6" } ],
           "Chains": [ { "Id": "c1", "Name": "Double", "ProxyIds": ["a1"] } ],
           "Rules": [ { "Id": "r1", "Name": "Wow1", "Enabled": true, "Action": "Proxy", "RouteId": "a1",

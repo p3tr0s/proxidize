@@ -8,9 +8,8 @@ leak protection, shipped as a single `proxidize.exe` (WinDivert's driver is embe
 
 ![Proxidize overview: each program plugged into its proxy, with the exit IP and country](docs/overview.png)
 
-**Status: feature-complete, not yet run on real Windows.** Everything is ported and tested (the engine runs end to
-end against a simulated platform in the test suite), but the first Windows run is still ahead; until it has happened
-and [PLAN.md](PLAN.md) says so, keep ProxyForge as your daily driver. Releases start at `0.1.0`.
+**Status: early.** Everything is ported and tested (the engine runs end to end against a simulated platform in the
+test suite), and 0.1 is running on Windows. Expect rough edges; see [PLAN.md](PLAN.md).
 
 ## What it does
 
@@ -25,6 +24,7 @@ and [PLAN.md](PLAN.md) says so, keep ProxyForge as your daily driver. Releases s
   blocked until it's fixed; tray notifications on changes
 - **ProxyCap import** (binary `machine.prs` and XML) and **ProxyForge import** (config with passwords)
 - Start with Windows (elevated, no prompt), passwords encrypted with DPAPI, tray icon as a link light
+- **Updates:** checks this repository's releases, and installs a new version with one click after checking its SHA-256
 
 ## Using it
 
@@ -37,8 +37,14 @@ under **Proxies**, a rule under **Rules**, press **Start**. Closing the window k
 | `--remove-killswitch` | delete every Proxidize filter from Windows Filtering Platform, e.g. after uninstalling |
 | `--demo` | open with sample data, nothing is saved or redirected |
 | `--screenshots <folder>` | render every page with the sample data to PNGs |
+| `--after-update <pid>`, `--start` | used by the updater: wait for the old instance, then start redirecting if it was |
 
 Config: `%ProgramData%\Proxidize\config.json` (ProxyForge's format). Logs: `%ProgramData%\Proxidize\logs`.
+
+**Coming from ProxyForge or ProxyCap:** exit them first (ProxyCap runs as a service). ProxyForge's kill switch stays in
+Windows after it closes and keeps its programs offline, Proxidize or not: remove it with
+`ProxyForge.exe --remove-killswitch` (as Administrator). Firewall rules from other tools that only allow a program to
+reach `127.0.0.1` and its proxy block Proxidize the same way.
 
 ## Layout
 

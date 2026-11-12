@@ -464,7 +464,18 @@ const MAX_BODY: usize = 256 * 1024;
 
 /// GET with up to five redirects. Returns the status and the body.
 pub async fn http_get(connector: &Connector, route: &[ProxyServer], url: &str) -> Result<(u16, Vec<u8>), String> {
-    let mut url = Url::parse(url).ok_or_else(|| format!("Invalid IP check URL '{url}'."))?;
+    fetch(connector, route, url, "*/*", MAX_BODY).await.map_err(|e| e.replace("Invalid URL", "Invalid IP check URL"))
+}
+
+/// GET with up to five redirects, accepting bodies up to `limit` bytes.
+pub async fn fetch(
+    connector: &Connector,
+    route: &[ProxyServer],
+    url: &str,
+    accept: &str,
+    limit: usize,
+) -> Result<(u16, Vec<u8>), String> {
+    let mut url = Url::parse(url).ok_or_else(|| format!("Invalid URL '{url}'."))?;
     for _ in 0..5 {
         let target = Target::host(&url.host, url.port);
         let stream = connector.connect(route, &target).await.map_err(|e| e.0)?;
@@ -473,9 +484,9 @@ pub async fn http_get(connector: &Connector, route: &[ProxyServer], url: &str) -
             let name = rustls::pki_types::ServerName::try_from(url.host.clone())
                 .map_err(|_| format!("Invalid TLS host '{}'.", url.host))?;
             let tls = tokio_rustls::TlsConnector::from(config).connect(name, stream).await.map_err(|e| format!("TLS: {e}"))?;
-            exchange(tls, &url).await?
+            exchange(tls, &url, accept, limit).await?
         } else {
-            exchange(stream, &url).await?
+            exchange(stream, &url, accept, limit).await?
         };
         if matches!(status, 301 | 302 | 303 | 307 | 308) {
             if let Some(location) = header(&headers, "location") {
@@ -509,15 +520,22 @@ fn header(headers: &[(String, String)], name: &str) -> Option<String> {
 
 type Response = (u16, Vec<(String, String)>, Vec<u8>);
 
-async fn exchange<S: AsyncRead + AsyncWrite + Unpin>(mut stream: S, url: &Url) -> Result<Response, String> {
+async fn exchange<S: AsyncRead + AsyncWrite + Unpin>(
+    mut stream: S,
+    url: &Url,
+    accept: &str,
+    limit: usize,
+) -> Result<Response, String> {
     let request = format!(
-        "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: Proxidize-HealthCheck/1.0\r\nAccept: */*\r\nConnection: close\r\n\r\n",
+        "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: Proxidize/{}\r\nAccept: {accept}\r\nConnection: close\r\n\r\n",
         url.path,
-        url.host_header()
+        url.host_header(),
+        env!("CARGO_PKG_VERSION")
     );
     stream.write_all(request.as_bytes()).await.map_err(|e| e.to_string())?;
     let mut raw = Vec::new();
-    let mut buffer = [0u8; 8192];
+    let mut buffer = vec![0u8; 64 * 1024];
+    let mut framing: Option<(usize, Framing)> = None;
     loop {
         // TLS servers often skip close_notify; treat an unexpected EOF after data as the end.
         let n = match stream.read(&mut buffer).await {
@@ -528,28 +546,49 @@ async fn exchange<S: AsyncRead + AsyncWrite + Unpin>(mut stream: S, url: &Url) -
         if n == 0 {
             break;
         }
+        let searched = raw.len().saturating_sub(3);
         raw.extend_from_slice(&buffer[..n]);
-        if raw.len() > MAX_BODY {
-            return Err("IP check response too large.".into());
+        if framing.is_none() {
+            if let Some(at) = raw[searched..].windows(4).position(|w| w == b"\r\n\r\n") {
+                let end = searched + at + 4;
+                framing = Some((end, framing_of(&String::from_utf8_lossy(&raw[..end]).to_ascii_lowercase())));
+            } else if raw.len() > 64 * 1024 {
+                return Err("HTTP response header too large.".into());
+            }
         }
-        if let Some(done) = complete_response(&raw) {
-            return done;
+        if let Some((end, framing)) = framing {
+            if raw.len() - end > limit {
+                return Err("Response too large.".into());
+            }
+            // Checked per read without rescanning the whole body: big downloads stay linear.
+            let complete = match framing {
+                Framing::Length(length) => raw.len() >= end + length,
+                Framing::Chunked => raw.ends_with(b"0\r\n\r\n") && decode_chunked(&raw[end..]).is_some(),
+                Framing::UntilClose => false,
+            };
+            if complete {
+                return parse_response(&raw, false);
+            }
         }
     }
-    complete_response(&raw).unwrap_or_else(|| parse_response(&raw, true))
+    parse_response(&raw, true)
 }
 
-/// `Some` once `raw` holds a full response (by Content-Length or chunked framing).
-fn complete_response(raw: &[u8]) -> Option<Result<Response, String>> {
-    let end = raw.windows(4).position(|w| w == b"\r\n\r\n")? + 4;
-    let head = String::from_utf8_lossy(&raw[..end]);
-    let lower = head.to_ascii_lowercase();
-    if lower.contains("transfer-encoding: chunked") {
-        decode_chunked(&raw[end..])?;
-        return Some(parse_response(raw, false));
+#[derive(Clone, Copy)]
+enum Framing {
+    Length(usize),
+    Chunked,
+    UntilClose,
+}
+
+fn framing_of(head_lower: &str) -> Framing {
+    if head_lower.contains("transfer-encoding: chunked") {
+        return Framing::Chunked;
     }
-    let length = lower.lines().find_map(|l| l.strip_prefix("content-length:").and_then(|v| v.trim().parse::<usize>().ok()))?;
-    (raw.len() >= end + length).then(|| parse_response(raw, false))
+    head_lower
+        .lines()
+        .find_map(|l| l.strip_prefix("content-length:").and_then(|v| v.trim().parse::<usize>().ok()))
+        .map_or(Framing::UntilClose, Framing::Length)
 }
 
 fn parse_response(raw: &[u8], at_eof: bool) -> Result<Response, String> {
