@@ -17,8 +17,6 @@ pub struct ImportResult {
     pub rules: Vec<Rule>,
     /// At least one imported Proxy rule had "Resolve names remotely" on.
     pub uses_remote_dns: bool,
-    /// Host patterns ProxyCap excluded from remote DNS (per rule there; applied globally here).
-    pub remote_dns_exceptions: Vec<String>,
     pub warnings: Vec<String>,
 }
 
@@ -107,7 +105,7 @@ fn unique_name<'a>(name: &str, taken: impl IntoIterator<Item = &'a String>) -> S
 
 /// Adds the imported items to `config`. `replace` clears existing proxies, chains and rules first.
 pub fn apply(config: &mut Config, import: ImportResult, replace: bool, enable_remote_dns: bool) {
-    let ImportResult { mut proxies, mut chains, rules, remote_dns_exceptions, .. } = import;
+    let ImportResult { mut proxies, mut chains, rules, .. } = import;
     if replace {
         config.proxies.clear();
         config.chains.clear();
@@ -129,22 +127,6 @@ pub fn apply(config: &mut Config, import: ImportResult, replace: bool, enable_re
     config.rules.extend(rules);
     if enable_remote_dns {
         config.settings.dns_mode = DnsMode::FakeIp;
-    }
-    if !remote_dns_exceptions.is_empty() {
-        let mut existing: Vec<String> = config
-            .settings
-            .fake_ip_exclude_domains
-            .split(';')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(String::from)
-            .collect();
-        for e in remote_dns_exceptions {
-            if !existing.iter().any(|x| x.eq_ignore_ascii_case(&e)) {
-                existing.push(e);
-            }
-        }
-        config.settings.fake_ip_exclude_domains = existing.join(";");
     }
 }
 
@@ -242,9 +224,10 @@ pub fn import_xml(xml: &str) -> Result<ImportResult, ImportError> {
             "socks5" => ProxyType::Socks5,
             "socks4" => ProxyType::Socks4,
             "http" => ProxyType::Http,
+            "https" => ProxyType::Https,
             _ => {
                 result.warnings.push(format!(
-                    "Proxy '{name}': type '{type_text}' is not supported by Proxidize (supported: socks5, socks4, http); skipped."
+                    "Proxy '{name}': type '{type_text}' is not supported by Proxidize (supported: socks5, socks4, http, https); skipped."
                 ));
                 skipped.push(name.to_lowercase());
                 continue;
@@ -255,10 +238,11 @@ pub fn import_xml(xml: &str) -> Result<ImportResult, ImportError> {
             name: unique_name(&name, &taken),
             kind,
             host: e.attr("hostname").or(e.attr("host")).unwrap_or("127.0.0.1").to_string(),
-            port: parse_int(e.attr("port"))
-                .filter(|p| (1..=65535).contains(p))
-                .map(|p| p as u16)
-                .unwrap_or(if kind == ProxyType::Http { 8080 } else { 1080 }),
+            port: parse_int(e.attr("port")).filter(|p| (1..=65535).contains(p)).map(|p| p as u16).unwrap_or(match kind {
+                ProxyType::Http => 8080,
+                ProxyType::Https => 443,
+                _ => 1080,
+            }),
             ..Default::default()
         };
         let auth = e.attr("auth_method").unwrap_or("none").trim().to_ascii_lowercase();
@@ -389,19 +373,14 @@ pub fn import_xml(xml: &str) -> Result<ImportResult, ImportError> {
         }
         for exception in e.items("remote_dns_exceptions", "remote_dns_exception") {
             if let Some(w) = exception.attr("wildcard").map(str::trim).filter(|s| !s.is_empty()) {
-                if !result.remote_dns_exceptions.iter().any(|x| x.eq_ignore_ascii_case(w)) {
-                    result.remote_dns_exceptions.push(w.to_string());
+                if !rule.remote_dns_exceptions.iter().any(|x| x.eq_ignore_ascii_case(w)) {
+                    rule.remote_dns_exceptions.push(w.to_string());
                 }
             }
         }
         result.rules.push(rule);
     }
 
-    if !result.remote_dns_exceptions.is_empty() {
-        result.warnings.push(
-            "Remote DNS exceptions are per rule in ProxyCap; Proxidize applies them globally (Settings > Fake IP excluded domains).".into(),
-        );
-    }
     Ok(result)
 }
 
@@ -863,7 +842,7 @@ mod tests {
         assert!(game.resolve_remotely);
         assert_eq!(game.programs, vec![r"D:\Games\WoW\Wow.exe", r"D:\Games\Other\*"]);
         assert_eq!(game.ports, vec!["3724", "8000-8100"]);
-        assert_eq!(import.remote_dns_exceptions, vec!["*.blizzard.com"]);
+        assert_eq!(game.remote_dns_exceptions, vec!["*.blizzard.com"]);
         assert!(import.uses_remote_dns);
         assert!(!import.rules[3].enabled);
         assert_eq!(import.rules[3].route_id.as_ref(), Some(&socks.id), "default proxy");
@@ -875,7 +854,8 @@ mod tests {
         assert_eq!(config.proxies.len(), 3);
         assert_eq!(config.proxies[1].name, "Home SOCKS (2)");
         assert_eq!(config.settings.dns_mode, DnsMode::FakeIp);
-        assert!(config.settings.fake_ip_exclude_domains.contains("*.blizzard.com"));
+        assert!(!config.settings.fake_ip_exclude_domains.contains("*.blizzard.com"), "kept on the rule, not global");
+        assert!(config.rules.iter().any(|r| r.remote_dns_exceptions == ["*.blizzard.com"]));
         assert!(RuleEngine::new(&config).errors.is_empty());
 
         let mut replaced = Config::example();

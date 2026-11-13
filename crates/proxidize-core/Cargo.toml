@@ -20,3 +20,6 @@ uuid.workspace = true
 socket2.workspace = true
 tokio-util.workspace = true
 chrono.workspace = true
+
+[dev-dependencies]
+rcgen = { version = "0.13", default-features = false, features = ["ring", "crypto"] }

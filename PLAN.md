@@ -66,8 +66,8 @@ a SOCKS5 server, block/RST, strict-mode drops, pre-existing flows reset, fake-IP
 
 ## After 0.1.0: closing the gap to ProxyCap
 
-- [ ] HTTPS proxies (TLS to the proxy, then CONNECT) — rustls is already in
-- [ ] Remote DNS exceptions per rule (config field + rule engine; import keeps them per rule)
+- [x] HTTPS proxies (TLS to the proxy, then CONNECT; certificate check with an opt-out for self-signed) (0.4.0)
+- [x] Remote DNS exceptions per rule ("Resolve locally" in the rule editor; the ProxyCap import keeps them per rule) (0.4.0)
 - [ ] Shadowsocks (AEAD ciphers, TCP and UDP)
 - [ ] SSH tunnels (direct-tcpip channels, password and key auth)
 - [ ] Windows service mode: engine as a service (redirects before sign-in), the app talks to it over a local pipe

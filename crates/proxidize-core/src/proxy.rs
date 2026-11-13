@@ -1,5 +1,5 @@
-//! Proxy clients (SOCKS5 with RFC 1929 auth, SOCKS4/4a, HTTP CONNECT), the SOCKS5 UDP header codec and the
-//! connector that opens TCP connections directly or through a proxy chain.
+//! Proxy clients (SOCKS5 with RFC 1929 auth, SOCKS4/4a, HTTP CONNECT, HTTPS = HTTP CONNECT over TLS), the SOCKS5 UDP
+//! header codec and the connector that opens TCP connections directly or through a proxy chain.
 
 use std::fmt;
 use std::sync::Arc;
@@ -12,6 +12,11 @@ use tokio::net::TcpStream;
 use crate::config::{ProxyServer, ProxyType};
 use crate::net::{Ip, Target};
 use crate::resolve::{HostResolver, SystemResolver};
+
+/// A connection the relay can use: plain TCP, or TLS layers (HTTPS proxies, also inside a chain).
+pub trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
+impl<T: AsyncRead + AsyncWrite + Unpin + Send> Io for T {}
+pub type Stream = Box<dyn Io>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProxyError(pub String);
@@ -281,7 +286,7 @@ pub async fn handshake<S: AsyncRead + AsyncWrite + Unpin>(stream: &mut S, proxy:
     match proxy.kind {
         ProxyType::Socks5 => socks5_handshake(stream, proxy, target, SOCKS5_CONNECT).await.map(|_| ()),
         ProxyType::Socks4 => socks4_handshake(stream, proxy, target).await,
-        ProxyType::Http => http_connect_handshake(stream, proxy, target).await,
+        ProxyType::Http | ProxyType::Https => http_connect_handshake(stream, proxy, target).await,
     }
 }
 
@@ -316,7 +321,7 @@ impl Connector {
 
     /// Connects to `target` through `route` (empty = direct). Every hop after the first is reached through the
     /// previous one, so only the first proxy's name is resolved locally. The stream is ready for payload.
-    pub async fn connect(&self, route: &[ProxyServer], target: &Target) -> Result<TcpStream> {
+    pub async fn connect(&self, route: &[ProxyServer], target: &Target) -> Result<Stream> {
         match tokio::time::timeout(self.timeout, self.connect_inner(route, target)).await {
             Ok(result) => result,
             Err(_) => match route.first() {
@@ -326,9 +331,30 @@ impl Connector {
         }
     }
 
-    async fn connect_inner(&self, route: &[ProxyServer], target: &Target) -> Result<TcpStream> {
+    /// A plain TCP connection to `target`, no proxy (the SOCKS5 UDP control connection).
+    pub async fn connect_direct(&self, target: &Target) -> Result<TcpStream> {
+        match tokio::time::timeout(self.timeout, self.open(&[], target)).await {
+            Ok(result) => result,
+            Err(_) => err(format!("Timed out connecting to {target}.")),
+        }
+    }
+
+    async fn connect_inner(&self, route: &[ProxyServer], target: &Target) -> Result<Stream> {
+        let mut stream: Stream = Box::new(self.open(route, target).await?);
+        for (i, hop) in route.iter().enumerate() {
+            let next = route.get(i + 1).map(endpoint_of).unwrap_or_else(|| target.clone());
+            if hop.kind == ProxyType::Https {
+                stream = tls_to(stream, hop).await?;
+            }
+            handshake(&mut stream, hop, &next).await?;
+        }
+        Ok(stream)
+    }
+
+    /// TCP to the first hop (or the target).
+    async fn open(&self, route: &[ProxyServer], target: &Target) -> Result<TcpStream> {
         let (ip, port) = self.resolve_first(route, target).await?;
-        let mut stream = TcpStream::connect((ip.to_std(), port)).await.map_err(|e| {
+        let stream = TcpStream::connect((ip.to_std(), port)).await.map_err(|e| {
             let what = match route.first() {
                 None => target.to_string(),
                 Some(p) => format!("proxy {} ({}:{})", p.name, p.host, p.port),
@@ -336,11 +362,25 @@ impl Connector {
             ProxyError(format!("Cannot connect to {what}: {e}."))
         })?;
         let _ = stream.set_nodelay(true);
-        for (i, hop) in route.iter().enumerate() {
-            let next = route.get(i + 1).map(endpoint_of).unwrap_or_else(|| target.clone());
-            handshake(&mut stream, hop, &next).await?;
-        }
         Ok(stream)
+    }
+}
+
+/// TLS to an HTTPS proxy, over whatever reaches it.
+async fn tls_to(stream: Stream, proxy: &ProxyServer) -> Result<Stream> {
+    let name = crate::tls::server_name(&proxy.host)
+        .ok_or_else(|| ProxyError(format!("{}: '{}' is not a valid TLS host name.", proxy.name, proxy.host)))?;
+    let config = crate::tls::client_config(!proxy.skip_certificate_check);
+    match tokio_rustls::TlsConnector::from(config).connect(name, stream).await {
+        Ok(tls) => Ok(Box::new(tls)),
+        Err(e) => {
+            let hint = if e.to_string().to_ascii_lowercase().contains("certificate") && !proxy.skip_certificate_check {
+                " If it uses a self-signed certificate, turn on \"Skip certificate check\" for it."
+            } else {
+                ""
+            };
+            err(format!("{}: TLS to the proxy failed: {e}.{hint}", proxy.name))
+        }
     }
 }
 
@@ -465,7 +505,7 @@ pub(crate) mod tests {
         let mut p = proxy(ProxyType::Socks5, port, Some("relay"));
         p.password = Some("nope".into());
         let connector = Connector::new(Arc::new(StaticResolver::default()), Duration::from_secs(5));
-        let error = connector.connect(&[p], &Target::host("a.example", 1)).await.unwrap_err();
+        let error = connector.connect(&[p], &Target::host("a.example", 1)).await.err().unwrap();
         assert!(error.0.contains("authentication failed"), "{error}");
     }
 
@@ -474,7 +514,7 @@ pub(crate) mod tests {
         let (port, _server) = socks5_server(true).await;
         let p = proxy(ProxyType::Socks5, port, None);
         let connector = Connector::new(Arc::new(StaticResolver::default()), Duration::from_secs(5));
-        let error = connector.connect(&[p], &Target::host("a.example", 1)).await.unwrap_err();
+        let error = connector.connect(&[p], &Target::host("a.example", 1)).await.err().unwrap();
         assert!(error.0.contains("requires a username"), "{error}");
     }
 
@@ -516,6 +556,56 @@ pub(crate) mod tests {
         assert_eq!(seen, [&[4u8, 1, 0, 80, 0, 0, 0, 1, 0][..], b"b.example\0"].concat());
     }
 
+    /// An HTTPS proxy with a self-signed certificate for 127.0.0.1: CONNECT over TLS, then echo.
+    async fn https_proxy() -> u16 {
+        let cert = rcgen::generate_simple_self_signed(vec!["127.0.0.1".to_string()]).unwrap();
+        let key = rustls::pki_types::PrivateKeyDer::Pkcs8(cert.key_pair.serialize_der().into());
+        let config = rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(vec![cert.cert.der().clone()], key)
+            .unwrap();
+        let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            loop {
+                let (s, _) = listener.accept().await.unwrap();
+                let acceptor = acceptor.clone();
+                tokio::spawn(async move {
+                    let Ok(mut s) = acceptor.accept(s).await else { return };
+                    let mut buf = vec![0u8; 1024];
+                    let n = s.read(&mut buf).await.unwrap();
+                    assert!(String::from_utf8_lossy(&buf[..n]).starts_with("CONNECT a.example:443 HTTP/1.1"));
+                    s.write_all(b"HTTP/1.1 200 Connection established\r\n\r\n").await.unwrap();
+                    let mut payload = [0u8; 4];
+                    s.read_exact(&mut payload).await.unwrap();
+                    s.write_all(&payload).await.unwrap();
+                    s.flush().await.unwrap();
+                });
+            }
+        });
+        port
+    }
+
+    #[tokio::test]
+    async fn https_proxy_over_tls() {
+        let port = https_proxy().await;
+        let connector = Connector::new(Arc::new(StaticResolver::default()), Duration::from_secs(5));
+
+        let mut p = proxy(ProxyType::Https, port, None);
+        let error = connector.connect(&[p.clone()], &Target::host("a.example", 443)).await.err().unwrap();
+        assert!(error.0.contains("TLS to the proxy failed") && error.0.contains("Skip certificate check"), "{error}");
+
+        p.skip_certificate_check = true;
+        let mut stream = connector.connect(&[p.clone()], &Target::host("a.example", 443)).await.unwrap();
+        stream.write_all(b"ping").await.unwrap();
+        let mut echo = [0u8; 4];
+        stream.read_exact(&mut echo).await.unwrap();
+        assert_eq!(&echo, b"ping");
+    }
+
     #[tokio::test]
     async fn unreachable_proxy_names_it() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -523,7 +613,7 @@ pub(crate) mod tests {
         drop(listener);
         let p = proxy(ProxyType::Socks5, port, None);
         let connector = Connector::new(Arc::new(StaticResolver::default()), Duration::from_secs(5));
-        let error = connector.connect(&[p], &Target::host("a.example", 1)).await.unwrap_err();
+        let error = connector.connect(&[p], &Target::host("a.example", 1)).await.err().unwrap();
         assert!(error.0.starts_with("Cannot connect to proxy Socks5"), "{error}");
     }
 

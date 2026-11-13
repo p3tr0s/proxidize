@@ -35,6 +35,8 @@ pub struct Decision {
     pub route: Arc<[ProxyServer]>,
     pub route_name: String,
     pub resolve_remotely: bool,
+    /// Host names this rule resolves locally even with `resolve_remotely`.
+    pub remote_dns_exceptions: Arc<[String]>,
 }
 
 impl Decision {
@@ -47,6 +49,7 @@ impl Decision {
             route: Arc::from(Vec::new()),
             route_name: "Direct".into(),
             resolve_remotely: false,
+            remote_dns_exceptions: Arc::from(Vec::new()),
         }
     }
 
@@ -59,7 +62,13 @@ impl Decision {
             route: Arc::from(Vec::new()),
             route_name: route_name.into(),
             resolve_remotely: false,
+            remote_dns_exceptions: Arc::from(Vec::new()),
         }
+    }
+
+    /// Whether `host` goes to the proxy as a name (remote DNS), not as a locally resolved IP.
+    pub fn resolves_remotely(&self, host: &str) -> bool {
+        self.resolve_remotely && !self.remote_dns_exceptions.iter().any(|p| crate::matching::host_matches(host, p))
     }
 
     /// UDP can only be relayed through exactly one SOCKS5 proxy.
@@ -274,6 +283,13 @@ fn compile(config: &Config, rule: &Rule, errors: &mut Vec<String>) -> CompiledRu
                 route: Arc::from(route),
                 route_name: name,
                 resolve_remotely: rule.resolve_remotely,
+                remote_dns_exceptions: rule
+                    .remote_dns_exceptions
+                    .iter()
+                    .map(|p| p.trim().to_string())
+                    .filter(|p| !p.is_empty())
+                    .collect::<Vec<_>>()
+                    .into(),
             },
             None => {
                 errors.push(format!("Rule '{}': proxy/chain not found or empty; matching traffic is blocked.", rule.name));
@@ -315,6 +331,26 @@ mod tests {
             hostnames: hosts,
             port,
         }
+    }
+
+    #[test]
+    fn remote_dns_exceptions_resolve_locally() {
+        let mut config = Config::default();
+        let proxy = ProxyServer { name: "P".into(), ..Default::default() };
+        config.proxies.push(proxy.clone());
+        config.rules.push(Rule {
+            name: "browser".into(),
+            route_id: Some(proxy.id.clone()),
+            remote_dns_exceptions: vec![".corp.example".into(), "printer*".into(), " ".into()],
+            ..Default::default()
+        });
+        let engine = RuleEngine::new(&config);
+        let d = engine.evaluate(&q("b.exe", r"C:\b.exe", "203.0.113.5", &[], 443, Protocol::Tcp));
+        assert_eq!(d.remote_dns_exceptions.len(), 2, "blank patterns dropped");
+        assert!(d.resolves_remotely("www.example.org"));
+        assert!(!d.resolves_remotely("intranet.corp.example"));
+        assert!(!d.resolves_remotely("corp.example"));
+        assert!(!d.resolves_remotely("printer-2"));
     }
 
     #[test]

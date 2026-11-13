@@ -506,7 +506,7 @@ impl Inner {
                 Some(relay) => {
                     let mut target = item.target;
                     match &target {
-                        Target::Host(host, port) if !a.decision.resolve_remotely => {
+                        Target::Host(host, port) if !a.decision.resolves_remotely(host) => {
                             let Some(ip) = self.ctx.resolver.resolve(host).await else { continue };
                             a.visible_by_address.lock().unwrap().insert((ip, *port), item.visible);
                             target = Target::Addr(ip, *port);
@@ -548,7 +548,7 @@ impl Inner {
 
     /// SOCKS5 UDP ASSOCIATE. Returns the control connection (kept open) and the relay endpoint.
     async fn associate(&self, proxy: &ProxyServer) -> Result<(tokio::net::TcpStream, Ip, u16), String> {
-        let mut control = self.ctx.connector.connect(&[], &endpoint_of(proxy)).await.map_err(|e| e.0)?;
+        let mut control = self.ctx.connector.connect_direct(&endpoint_of(proxy)).await.map_err(|e| e.0)?;
         let bound = tokio::time::timeout(
             self.ctx.connector.timeout(),
             socks5_handshake(&mut control, proxy, &Target::Addr(Ip::UNSPECIFIED_V4, 0), SOCKS5_UDP_ASSOCIATE),

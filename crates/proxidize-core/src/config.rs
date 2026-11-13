@@ -16,6 +16,8 @@ pub enum ProxyType {
     Socks5,
     Socks4,
     Http,
+    /// HTTP CONNECT over TLS to the proxy.
+    Https,
 }
 
 impl ProxyType {
@@ -24,6 +26,7 @@ impl ProxyType {
             ProxyType::Socks5 => "SOCKS5",
             ProxyType::Socks4 => "SOCKS4",
             ProxyType::Http => "HTTP",
+            ProxyType::Https => "HTTPS",
         }
     }
 }
@@ -69,6 +72,9 @@ pub struct ProxyServer {
     pub password_protected: Option<String>,
     /// Patch cable colour `#RRGGBB`; `None` = from the palette by position.
     pub color: Option<String>,
+    /// HTTPS proxies: accept any certificate (a self-signed one on your own proxy).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub skip_certificate_check: bool,
 }
 
 impl Default for ProxyServer {
@@ -83,6 +89,7 @@ impl Default for ProxyServer {
             password: None,
             password_protected: None,
             color: None,
+            skip_certificate_check: false,
         }
     }
 }
@@ -126,6 +133,9 @@ pub struct Rule {
     pub transport: TransportFilter,
     /// Send host names to the proxy instead of locally resolved IPs (needs DNS mode FakeIp).
     pub resolve_remotely: bool,
+    /// With `resolve_remotely`: host names (globs, `.example.com`) still resolved locally, and sent as IPs.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub remote_dns_exceptions: Vec<String>,
 }
 
 impl Default for Rule {
@@ -141,6 +151,7 @@ impl Default for Rule {
             ports: Vec::new(),
             transport: TransportFilter::Both,
             resolve_remotely: true,
+            remote_dns_exceptions: Vec::new(),
         }
     }
 }

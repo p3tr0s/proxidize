@@ -562,7 +562,7 @@ async fn handle_client(mut client: TcpStream, inner: Arc<Inner>) {
         deps.log.debug(format!("TCP {}({}) -> {destination} via {}", entry.process_name, entry.process_id, decision.route_name));
         let piped = {
             let (cr, cw) = client.split();
-            let (ur, uw) = upstream.split();
+            let (ur, uw) = tokio::io::split(&mut upstream);
             let up = copy_counted(cr, uw, |n| record.add_up(n));
             let down = copy_counted(ur, cw, |n| record.add_down(n));
             tokio::select! {
@@ -614,7 +614,7 @@ async fn build_target(entry: &NatEntry, resolver: &dyn HostResolver) -> Result<T
     let Some(host) = &entry.hostname else {
         return Err(ProxyError("Fake IP without a known host name.".into()));
     };
-    if !entry.decision.route.is_empty() && entry.decision.resolve_remotely {
+    if !entry.decision.route.is_empty() && entry.decision.resolves_remotely(host) {
         return Ok(Target::host(host, entry.original_port));
     }
     match resolver.resolve(host).await {
@@ -747,6 +747,22 @@ mod tests {
         let seen = server.await.unwrap();
         assert_eq!(seen[3], 3, "name sent to the proxy, not resolved locally");
         assert_eq!(rig.tracker.snapshot(true)[0].destination, "world.realm.example:8085");
+    }
+
+    #[tokio::test]
+    async fn remote_dns_exception_sends_the_ip() {
+        let rig = rig();
+        let (socks_port, server) = socks5_server(false).await;
+        let p = proxy(ProxyType::Socks5, socks_port, None);
+        let mut d = (*decision(vec![p], true)).clone();
+        d.remote_dns_exceptions = vec![".example".to_string()].into();
+        let (mut s, _) = connect(&rig, 8085, Arc::new(d), Some("echo.example"), true).await;
+        s.write_all(b"hello").await.unwrap();
+        let mut buf = [0u8; 5];
+        s.read_exact(&mut buf).await.unwrap();
+        let seen = server.await.unwrap();
+        assert_eq!(seen[3], 1, "resolved locally and sent as an IPv4 address");
+        assert_eq!(&seen[4..8], &[127, 0, 0, 1]);
     }
 
     #[tokio::test]

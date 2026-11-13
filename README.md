@@ -15,8 +15,10 @@ test suite), and 0.1 is running on Windows. Expect rough edges; see [PLAN.md](PL
 
 - **Rules** by program (name or path glob), destination (host globs, `.domain`, IPs, CIDRs, IP ranges), ports and
   transport; first match wins; actions **Proxy / Direct / Block**
-- **Proxies:** SOCKS5 (no auth / username+password), SOCKS4 / 4a, HTTP CONNECT (Basic auth); **chains** of any length
-- **Remote DNS** through fake-IP DNS: host names go to the proxy, not to your resolver
+- **Proxies:** SOCKS5 (no auth / username+password), SOCKS4 / 4a, HTTP CONNECT and HTTPS (Basic auth); **chains** of
+  any length
+- **Remote DNS** through fake-IP DNS: host names go to the proxy, not to your resolver; per-rule exceptions resolve
+  chosen names locally
 - **UDP** through SOCKS5 UDP ASSOCIATE; UDP a route can't carry is blocked, never sent directly
 - **Leak protection:** strict fail-closed packet handling and a WFP **kill switch** that keeps proxied programs
   offline whenever Proxidize isn't redirecting (stopped, crashed, not started yet after a reboot)

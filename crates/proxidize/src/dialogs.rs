@@ -39,6 +39,8 @@ pub enum Dialog {
         is_new: bool,
         programs: String,
         destinations: String,
+        /// Host names resolved locally despite remote DNS.
+        local_names: String,
         ports: String,
         picker: Option<Vec<(String, String)>>,
         picker_filter: String,
@@ -105,6 +107,7 @@ impl Dialog {
         Dialog::Rule {
             programs: draft.programs.join("\n"),
             destinations: draft.destinations.join("\n"),
+            local_names: draft.remote_dns_exceptions.join("\n"),
             ports: draft.ports.join(", "),
             draft,
             is_new,
@@ -256,7 +259,7 @@ impl App {
                         egui::ComboBox::from_id_salt("ptype").width(160.0).selected_text(type_label(draft.kind)).show_ui(
                             ui,
                             |ui| {
-                                for t in [ProxyType::Socks5, ProxyType::Socks4, ProxyType::Http] {
+                                for t in [ProxyType::Socks5, ProxyType::Socks4, ProxyType::Http, ProxyType::Https] {
                                     ui.selectable_value(&mut draft.kind, t, type_label(t));
                                 }
                             },
@@ -272,6 +275,17 @@ impl App {
                     draft.password = Some(pass).filter(|p| !p.is_empty());
                     if draft.kind == ProxyType::Socks4 && draft.password.is_some() {
                         widgets::hint(ui, "SOCKS4 has no passwords: only the username (user id) is sent.");
+                    }
+                    if draft.kind == ProxyType::Https {
+                        widgets::form_row(ui, "Certificate", |ui| {
+                            widgets::square_check(ui, &mut draft.skip_certificate_check, "Skip certificate check");
+                        });
+                        if draft.skip_certificate_check {
+                            widgets::hint(
+                                ui,
+                                "Any certificate is accepted: use this only for your own proxy with a self-signed certificate.",
+                            );
+                        }
                     }
                     let effective = theme::cable_of(draft, &config);
                     widgets::form_row(ui, "Cable", |ui| cable_picker(ui, &mut draft.color, effective));
@@ -425,7 +439,7 @@ impl App {
                 }
                 o
             }
-            Dialog::Rule { draft, is_new, programs, destinations, ports, picker, picker_filter } => {
+            Dialog::Rule { draft, is_new, programs, destinations, local_names, ports, picker, picker_filter } => {
                 let title = if *is_new { "Add rule" } else { "Edit rule" };
                 let config = self.config.clone();
                 let mut save = false;
@@ -503,6 +517,16 @@ impl App {
                                 "Resolve host names through the proxy (needs DNS mode Fake IP)",
                             );
                         });
+                        if draft.resolve_remotely {
+                            widgets::form_row(ui, "Resolve locally", |ui| {
+                                ui.add(
+                                    egui::TextEdit::multiline(local_names)
+                                        .desired_width(400.0)
+                                        .desired_rows(2)
+                                        .hint_text("Exceptions: *.corp.example, .lan, printer. Sent to the proxy as IPs."),
+                                );
+                            });
+                        }
                     }
                     widgets::form_row(ui, "Programs", |ui| {
                         ui.vertical(|ui| {
@@ -563,6 +587,7 @@ impl App {
                     draft.programs =
                         programs.lines().map(|l| l.trim().trim_matches('"').to_string()).filter(|l| !l.is_empty()).collect();
                     draft.destinations = split_list(destinations);
+                    draft.remote_dns_exceptions = split_list(local_names);
                     draft.ports = split_ports(ports);
                     let mut c = self.config.clone();
                     match c.rules.iter_mut().find(|r| r.id == draft.id) {

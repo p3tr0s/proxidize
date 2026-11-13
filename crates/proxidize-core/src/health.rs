@@ -3,7 +3,7 @@
 //! the proxy instead of being resolved locally.
 
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local};
@@ -480,9 +480,8 @@ pub async fn fetch(
         let target = Target::host(&url.host, url.port);
         let stream = connector.connect(route, &target).await.map_err(|e| e.0)?;
         let (status, headers, body) = if url.https {
-            let config = tls_config();
-            let name = rustls::pki_types::ServerName::try_from(url.host.clone())
-                .map_err(|_| format!("Invalid TLS host '{}'.", url.host))?;
+            let config = crate::tls::client_config(true);
+            let name = crate::tls::server_name(&url.host).ok_or_else(|| format!("Invalid TLS host '{}'.", url.host))?;
             let tls = tokio_rustls::TlsConnector::from(config).connect(name, stream).await.map_err(|e| format!("TLS: {e}"))?;
             exchange(tls, &url, accept, limit).await?
         } else {
@@ -497,21 +496,6 @@ pub async fn fetch(
         return Ok((status, body));
     }
     Err("Too many redirects.".into())
-}
-
-fn tls_config() -> Arc<rustls::ClientConfig> {
-    static CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
-    CONFIG
-        .get_or_init(|| {
-            let roots = rustls::RootCertStore { roots: webpki_roots::TLS_SERVER_ROOTS.to_vec() };
-            let config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
-                .with_safe_default_protocol_versions()
-                .expect("ring supports the default protocol versions")
-                .with_root_certificates(roots)
-                .with_no_client_auth();
-            Arc::new(config)
-        })
-        .clone()
 }
 
 fn header(headers: &[(String, String)], name: &str) -> Option<String> {

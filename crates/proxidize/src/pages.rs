@@ -28,6 +28,7 @@ pub fn type_label(t: ProxyType) -> &'static str {
         ProxyType::Socks5 => "SOCKS5",
         ProxyType::Socks4 => "SOCKS4",
         ProxyType::Http => "HTTP",
+        ProxyType::Https => "HTTPS",
     }
 }
 
