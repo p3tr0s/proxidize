@@ -62,7 +62,7 @@ a SOCKS5 server, block/RST, strict-mode drops, pre-existing flows reset, fake-IP
 
 - [x] CI: core on Linux; workspace clippy + tests + release build on Windows
 - [x] First release (`0.1.0`)
-- [ ] Make the repository public so the update check can see releases
+- [x] Repository public, so the update check can see releases
 
 ## After 0.1.0: closing the gap to ProxyCap
 

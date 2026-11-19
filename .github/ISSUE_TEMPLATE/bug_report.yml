@@ -1,0 +1,35 @@
+name: Bug report
+description: Something doesn't work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Proxidize version
+      description: Settings → Updates shows it.
+      placeholder: "0.4.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 24H2"
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The lines around the problem from the Log page or `%ProgramData%\Proxidize\logs\proxidize.log`. Remove anything private (proxy addresses, user names).
+      render: text
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup
+      description: The rule and proxy type involved, and any other proxifier, VPN, firewall or anti-cheat on the PC.

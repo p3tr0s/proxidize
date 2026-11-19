@@ -1,0 +1,39 @@
+name: Release notes
+
+# Keeps the notes of published releases in step with CHANGELOG.md: each release gets its version's section plus
+# the download notes. New releases get theirs from the Build workflow; this one catches later edits.
+on:
+  push:
+    branches: [main]
+    paths: [CHANGELOG.md]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Update release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName -q '.[].tagName'); do
+            v="${tag#v}"
+            section=$(awk -v v="$v" '
+              /^## / { if (found) exit; if ($2 == v) { found = 1; next } }
+              found { print }
+            ' CHANGELOG.md | sed -e '/./,$!d')
+            [ -z "$section" ] && { echo "$tag: no section, left as is"; continue; }
+            {
+              printf '%s\n\n### Download\n\n' "$section"
+              printf '**proxidize-%s-win-x64.exe** is all you need: run it, and it asks for Administrator rights (the packet\n' "$v"
+              printf 'driver and the kill switch need them). The zip holds the same exe plus the licenses.\n'
+              case "$v" in 0.1.*) ;; *) printf 'Already on 0.2.0 or later? Proxidize offers this update itself.\n' ;; esac
+            } > notes.md
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+            echo "$tag: updated"
+          done

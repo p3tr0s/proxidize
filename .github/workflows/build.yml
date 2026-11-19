@@ -88,6 +88,30 @@ jobs:
           name: proxidize-${{ steps.version.outputs.version }}
           path: release/*
 
+      - name: Release notes
+        if: steps.version.outputs.release == 'true'
+        shell: pwsh
+        run: |
+          # This version's section of CHANGELOG.md, then the download notes.
+          $v = '${{ steps.version.outputs.version }}'
+          $lines = Get-Content CHANGELOG.md
+          $start = ($lines | Select-String -Pattern "^## $([regex]::Escape($v))( |$)" | Select-Object -First 1).LineNumber
+          $notes = @()
+          if ($start) {
+            foreach ($line in $lines[$start..($lines.Count - 1)]) {
+              if ($line -match '^## ') { break }
+              $notes += $line
+            }
+          }
+          if (-not ($notes -join '').Trim()) { $notes = @("See the commits below.") }
+          $notes += ''
+          $notes += '### Download'
+          $notes += ''
+          $notes += "**proxidize-$v-win-x64.exe** is all you need: run it, and it asks for Administrator rights (the packet"
+          $notes += 'driver and the kill switch need them). The zip holds the same exe plus the licenses.'
+          $notes += 'Already on 0.2.0 or later? Proxidize offers this update itself.'
+          $notes | Set-Content release-notes.md -Encoding utf8
+
       - name: GitHub release
         if: steps.version.outputs.release == 'true'
         uses: softprops/action-gh-release@v2
@@ -97,6 +121,4 @@ jobs:
           name: Proxidize ${{ steps.version.outputs.version }}
           files: release/*
           generate_release_notes: true
-          body: |
-            One file: `proxidize-*-win-x64.exe`. It asks for Administrator rights (needed for the WinDivert driver and
-            the kill switch). The zip holds the same exe plus the licenses.
+          body_path: release-notes.md

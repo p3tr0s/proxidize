@@ -1,0 +1,15 @@
+name: Feature request
+description: Something Proxidize should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you want to do
+      description: The task, not the solution. For example "send only one game's voice chat through a different proxy".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How it could work
